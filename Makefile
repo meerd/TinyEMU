@@ -103,6 +103,10 @@ CFLAGS+=-DCONFIG_X86EMU
 EMU_OBJS+=x86_cpu.o x86_machine.o ide.o ps2.o vmmouse.o pckbd.o vga.o
 endif
 
+.PHONY: run
+
+WORKING_DIRECTORY:=$(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+
 temu$(EXE): $(EMU_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(EMU_LIBS)
 
@@ -130,6 +134,9 @@ install: $(PROGS)
 
 clean:
 	rm -f *.o *.d *~ $(PROGS) slirp/*.o slirp/*.d slirp/*~
+
+run:
+	(cd ${WORKING_DIRECTORY} && ./temu ./demo/configs/default.cfg)
 
 -include $(wildcard *.d)
 -include $(wildcard slirp/*.d)
