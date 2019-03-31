@@ -1,0 +1,6 @@
+temu
+build_filelist
+splitimg
+
+*.d
+*.o
