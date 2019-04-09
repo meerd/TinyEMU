@@ -36,7 +36,7 @@ PROGS+= temu
 
 all: $(PROGS)
 
-EMU_OBJS:=virtio.o pci.o fs.o cutils.o iomem.o fs_disk.o fs_utils.o json.o machine.o temu.o
+EMU_OBJS:=virtio.o fs.o cutils.o iomem.o fs_disk.o fs_utils.o json.o machine.o temu.o
 EMU_OBJS+=riscv_machine.o softfp.o riscv_cpu32.o 
 CFLAGS+=-DCONFIG_RISCV_MAX_XLEN=32
 

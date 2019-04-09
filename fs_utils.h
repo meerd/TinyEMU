@@ -48,11 +48,6 @@ typedef enum {
 
 typedef uint64_t FSFileID;
 
-static inline BOOL isspace_nolf(int c)
-{
-    return (c == ' ' || c == '\t');
-}
-
 static inline int from_hex(int c)
 {
     if (c >= '0' && c <= '9')
@@ -65,31 +60,4 @@ static inline int from_hex(int c)
         return -1;
 }
 
-static inline uint64_t block_align(uint64_t val, uint64_t align)
-{
-    return (val + align - 1) & ~(align - 1);
-}
-
-void pstrcpy(char *buf, int buf_size, const char *str);
-char *pstrcat(char *buf, int buf_size, const char *s);
 char *compose_path(const char *path, const char *name);
-char *compose_url(const char *base_url, const char *name);
-void skip_line(const char **pp);
-char *quoted_str(const char *str);
-int parse_fname(char *buf, int buf_size, const char **pp);
-int parse_uint32_base(uint32_t *pval, const char **pp, int base);
-int parse_uint64_base(uint64_t *pval, const char **pp, int base);
-int parse_uint64(uint64_t *pval, const char **pp);
-int parse_uint32(uint32_t *pval, const char **pp);
-int parse_time(uint32_t *psec, uint32_t *pnsec, const char **pp);
-int parse_file_id(FSFileID *pval, const char **pp);
-char *file_id_to_filename(char *buf, FSFileID file_id);
-void encode_hex(char *str, const uint8_t *buf, int len);
-int decode_hex(uint8_t *buf, const char *str, int len);
-BOOL is_url(const char *path);
-
-const char *skip_header(const char *p);
-int parse_tag(char *buf, int buf_size, const char *str, const char *tag);
-int parse_tag_uint64(uint64_t *pval, const char *str, const char *tag);
-int parse_tag_file_id(FSFileID *pval, const char *str, const char *tag);
-int parse_tag_version(const char *str);

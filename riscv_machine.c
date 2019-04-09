@@ -57,7 +57,6 @@ typedef struct RISCVMachine {
     uint64_t htif_tohost, htif_fromhost;
 
     VIRTIODevice *keyboard_dev;
-    VIRTIODevice *mouse_dev;
 
     int virtio_count;
 } RISCVMachine;
@@ -869,27 +868,6 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
         s->virtio_count++;
     }
 
-    if (p->input_device) {
-        if (!strcmp(p->input_device, "virtio")) {
-            vbus->irq = &s->plic_irq[irq_num];
-            s->keyboard_dev = virtio_input_init(vbus,
-                                                VIRTIO_INPUT_TYPE_KEYBOARD);
-            vbus->addr += VIRTIO_SIZE;
-            irq_num++;
-            s->virtio_count++;
-
-            vbus->irq = &s->plic_irq[irq_num];
-            s->mouse_dev = virtio_input_init(vbus,
-                                             VIRTIO_INPUT_TYPE_TABLET);
-            vbus->addr += VIRTIO_SIZE;
-            irq_num++;
-            s->virtio_count++;
-        } else {
-            vm_error("unsupported input device: %s\n", p->input_device);
-            exit(1);
-        }
-    }
-    
     if (!p->files[VM_FILE_BIOS].buf) {
         vm_error("No bios found");
     }
@@ -950,20 +928,6 @@ static void riscv_vm_send_key_event(VirtMachine *s1, BOOL is_down,
     }
 }
 
-static BOOL riscv_vm_mouse_is_absolute(VirtMachine *s)
-{
-    return TRUE;
-}
-
-static void riscv_vm_send_mouse_event(VirtMachine *s1, int dx, int dy, int dz,
-                                      unsigned int buttons)
-{
-    RISCVMachine *s = (RISCVMachine *)s1;
-    if (s->mouse_dev) {
-        virtio_input_send_mouse_event(s->mouse_dev, dx, dy, dz, buttons);
-    }
-}
-
 const VirtMachineClass riscv_machine_class = {
     "riscv32",
     riscv_machine_set_defaults,
@@ -971,7 +935,5 @@ const VirtMachineClass riscv_machine_class = {
     riscv_machine_end,
     riscv_machine_get_sleep_duration,
     riscv_machine_interp,
-    riscv_vm_mouse_is_absolute,
-    riscv_vm_send_mouse_event,
-    riscv_vm_send_key_event,
+    riscv_vm_send_key_event
 };

@@ -117,6 +117,7 @@ typedef struct VirtMachine {
     FBDevice *fb_dev;
 } VirtMachine;
 
+
 struct VirtMachineClass {
     const char *machine_names;
     void (*virt_machine_set_defaults)(VirtMachineParams *p);
@@ -124,9 +125,6 @@ struct VirtMachineClass {
     void (*virt_machine_end)(VirtMachine *s);
     int (*virt_machine_get_sleep_duration)(VirtMachine *s, int delay);
     void (*virt_machine_interp)(VirtMachine *s, int max_exec_cycle);
-    BOOL (*vm_mouse_is_absolute)(VirtMachine *s);
-    void (*vm_send_mouse_event)(VirtMachine *s1, int dx, int dy, int dz,
-                                unsigned int buttons);
     void (*vm_send_key_event)(VirtMachine *s1, BOOL is_down, uint16_t key_code);
 };
 
@@ -155,15 +153,7 @@ static inline void virt_machine_interp(VirtMachine *s, int max_exec_cycle)
 {
     s->vmc->virt_machine_interp(s, max_exec_cycle);
 }
-static inline BOOL vm_mouse_is_absolute(VirtMachine *s)
-{
-    return s->vmc->vm_mouse_is_absolute(s);
-}
-static inline void vm_send_mouse_event(VirtMachine *s1, int dx, int dy, int dz,
-                                       unsigned int buttons)
-{
-    s1->vmc->vm_send_mouse_event(s1, dx, dy, dz, buttons);
-}
+
 static inline void vm_send_key_event(VirtMachine *s1, BOOL is_down, uint16_t key_code)
 {
     s1->vmc->vm_send_key_event(s1, is_down, key_code);
