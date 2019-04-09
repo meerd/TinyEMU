@@ -57,6 +57,8 @@ struct FSFile {
     } u;
 };
 
+
+
 static void fs_delete(FSDevice *fs, FSFile *f)
 {
     if (f->is_opened)
@@ -154,6 +156,29 @@ static void fs_statfs(FSDevice *fs1, FSStatFS *st)
     st->f_files = st1.f_files;
     st->f_ffree = st1.f_ffree;
 }
+
+#if 0
+static char *compose_path(const char *path, const char *name)
+{
+    int path_len, name_len;
+    char *d, *q;
+
+    if (path[0] == '\0') {
+        d = strdup(name);
+    } else {
+        path_len = strlen(path);
+        name_len = strlen(name);
+        d = malloc(path_len + 1 + name_len + 1);
+        q = d;
+        memcpy(q, path, path_len);
+        q += path_len;
+        if (path[path_len - 1] != '/')
+            *q++ = '/';
+        memcpy(q, name, name_len + 1);
+    }
+    return d;
+}
+#endif
 
 static char *compose_path(const char *path, const char *name)
 {

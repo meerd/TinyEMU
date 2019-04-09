@@ -23,23 +23,6 @@
  */
 #include "json.h"
 
-typedef struct FBDevice FBDevice;
-
-typedef void SimpleFBDrawFunc(FBDevice *fb_dev, void *opaque,
-                              int x, int y, int w, int h);
-
-struct FBDevice {
-    /* the following is set by the device */
-    int width;
-    int height;
-    int stride; /* current stride in bytes */
-    uint8_t *fb_data; /* current pointer to the pixel data */
-    int fb_size; /* frame buffer memory size (info only) */
-    void *device_opaque;
-    void (*refresh)(struct FBDevice *fb_dev,
-                    SimpleFBDrawFunc *redraw_func, void *opaque);
-};
-
 #define MAX_DRIVE_DEVICE 4
 #define MAX_FS_DEVICE 4
 #define MAX_ETH_DEVICE 1
@@ -73,12 +56,6 @@ typedef struct {
     FSDevice *fs_dev;
 } VMFSEntry;
 
-typedef struct {
-    char *driver;
-    char *ifname;
-    EthernetDevice *net;
-} VMEthEntry;
-
 typedef struct VirtMachineClass VirtMachineClass;
 
 typedef struct {
@@ -88,33 +65,21 @@ typedef struct {
     uint64_t ram_size;
     BOOL rtc_real_time;
     BOOL rtc_local_time;
-    char *display_device; /* NULL means no display */
-    int width, height; /* graphic width & height */
     CharacterDevice *console;
     VMDriveEntry tab_drive[MAX_DRIVE_DEVICE];
     int drive_count;
     VMFSEntry tab_fs[MAX_FS_DEVICE];
     int fs_count;
-    VMEthEntry tab_eth[MAX_ETH_DEVICE];
-    int eth_count;
-
     char *cmdline; /* bios or kernel command line */
-    BOOL accel_enable; /* enable acceleration (KVM) */
-    char *input_device; /* NULL means no input */
-    
     /* kernel, bios and other auxiliary files */
     VMFileEntry files[VM_FILE_COUNT];
 } VirtMachineParams;
 
 typedef struct VirtMachine {
     const VirtMachineClass *vmc;
-    /* network */
-    EthernetDevice *net;
     /* console */
     VIRTIODevice *console_dev;
     CharacterDevice *console;
-    /* graphics */
-    FBDevice *fb_dev;
 } VirtMachine;
 
 

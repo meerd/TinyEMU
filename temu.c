@@ -370,16 +370,10 @@ void virt_machine_run(VirtMachine *m)
         }
     }
 
-    if (m->net) {
-        m->net->select_fill(m->net, &fd_max, &rfds, &wfds, &efds, &delay);
-    }
-
     tv.tv_sec = delay / 1000;
     tv.tv_usec = (delay % 1000) * 1000;
     ret = select(fd_max + 1, &rfds, &wfds, &efds, &tv);
-    if (m->net) {
-        m->net->select_poll(m->net, &rfds, &wfds, &efds, ret);
-    }
+
     if (ret > 0) {
         if (m->console_dev && FD_ISSET(stdin_fd, &rfds)) {
             uint8_t buf[128];
@@ -419,8 +413,8 @@ void help(void)
 int main(int argc, char **argv)
 {
     VirtMachine *s;
-    const char *path, *cmdline;
-    int c, option_index, i, ram_size, accel_enable;
+    const char *path;
+    int c, option_index, i, ram_size;
     BOOL allow_ctrlc;
     BlockDeviceModeEnum drive_mode;
     VirtMachineParams p_s, *p = &p_s;
@@ -429,8 +423,6 @@ int main(int argc, char **argv)
     allow_ctrlc = TRUE;
     (void)allow_ctrlc;
     drive_mode = BF_MODE_SNAPSHOT;
-    accel_enable = -1;
-    cmdline = NULL;
     for(;;) {
         c = getopt_long_only(argc, argv, "hm:", options, &option_index);
         if (c == -1)
@@ -446,12 +438,6 @@ int main(int argc, char **argv)
                 break;
             case 3: /* ro */
                 drive_mode = BF_MODE_RO;
-                break;
-            case 4: /* append */
-                cmdline = optarg;
-                break;
-            case 5: /* no-accel */
-                accel_enable = FALSE;
                 break;
             default:
                 fprintf(stderr, "unknown option index: %d\n", option_index);
@@ -482,12 +468,7 @@ int main(int argc, char **argv)
     if (ram_size > 0) {
         p->ram_size = (uint64_t)ram_size << 20;
     }
-    if (accel_enable != -1)
-        p->accel_enable = accel_enable;
-    if (cmdline) {
-        vm_add_cmdline(p, cmdline);
-    }
-    
+
     /* open the files & devices */
     for(i = 0; i < p->drive_count; i++) {
         BlockDevice *drive;
@@ -526,10 +507,6 @@ int main(int argc, char **argv)
         exit(1);
     
     virt_machine_free_config(p);
-
-    if (s->net) {
-        s->net->device_set_carrier(s->net, TRUE);
-    }
     
     for(;;) {
         virt_machine_run(s);

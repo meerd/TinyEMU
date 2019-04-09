@@ -35,61 +35,33 @@
 //#define DEBUG_VIRTIO
 
 /* MMIO addresses - from the Linux kernel */
-#define VIRTIO_MMIO_MAGIC_VALUE		0x000
-#define VIRTIO_MMIO_VERSION		0x004
-#define VIRTIO_MMIO_DEVICE_ID		0x008
-#define VIRTIO_MMIO_VENDOR_ID		0x00c
-#define VIRTIO_MMIO_DEVICE_FEATURES	0x010
+#define VIRTIO_MMIO_MAGIC_VALUE         0x000
+#define VIRTIO_MMIO_VERSION             0x004
+#define VIRTIO_MMIO_DEVICE_ID           0x008
+#define VIRTIO_MMIO_VENDOR_ID           0x00c
+#define VIRTIO_MMIO_DEVICE_FEATURES     0x010
 #define VIRTIO_MMIO_DEVICE_FEATURES_SEL	0x014
-#define VIRTIO_MMIO_DRIVER_FEATURES	0x020
+#define VIRTIO_MMIO_DRIVER_FEATURES     0x020
 #define VIRTIO_MMIO_DRIVER_FEATURES_SEL	0x024
-#define VIRTIO_MMIO_GUEST_PAGE_SIZE	0x028 /* version 1 only */
-#define VIRTIO_MMIO_QUEUE_SEL		0x030
-#define VIRTIO_MMIO_QUEUE_NUM_MAX	0x034
-#define VIRTIO_MMIO_QUEUE_NUM		0x038
-#define VIRTIO_MMIO_QUEUE_ALIGN		0x03c /* version 1 only */
-#define VIRTIO_MMIO_QUEUE_PFN		0x040 /* version 1 only */
-#define VIRTIO_MMIO_QUEUE_READY		0x044
-#define VIRTIO_MMIO_QUEUE_NOTIFY	0x050
+#define VIRTIO_MMIO_GUEST_PAGE_SIZE     0x028 /* version 1 only */
+#define VIRTIO_MMIO_QUEUE_SEL           0x030
+#define VIRTIO_MMIO_QUEUE_NUM_MAX       0x034
+#define VIRTIO_MMIO_QUEUE_NUM           0x038
+#define VIRTIO_MMIO_QUEUE_ALIGN         0x03c /* version 1 only */
+#define VIRTIO_MMIO_QUEUE_PFN           0x040 /* version 1 only */
+#define VIRTIO_MMIO_QUEUE_READY         0x044
+#define VIRTIO_MMIO_QUEUE_NOTIFY        0x050
 #define VIRTIO_MMIO_INTERRUPT_STATUS	0x060
-#define VIRTIO_MMIO_INTERRUPT_ACK	0x064
-#define VIRTIO_MMIO_STATUS		0x070
-#define VIRTIO_MMIO_QUEUE_DESC_LOW	0x080
-#define VIRTIO_MMIO_QUEUE_DESC_HIGH	0x084
-#define VIRTIO_MMIO_QUEUE_AVAIL_LOW	0x090
+#define VIRTIO_MMIO_INTERRUPT_ACK       0x064
+#define VIRTIO_MMIO_STATUS              0x070
+#define VIRTIO_MMIO_QUEUE_DESC_LOW      0x080
+#define VIRTIO_MMIO_QUEUE_DESC_HIGH     0x084
+#define VIRTIO_MMIO_QUEUE_AVAIL_LOW     0x090
 #define VIRTIO_MMIO_QUEUE_AVAIL_HIGH	0x094
-#define VIRTIO_MMIO_QUEUE_USED_LOW	0x0a0
-#define VIRTIO_MMIO_QUEUE_USED_HIGH	0x0a4
+#define VIRTIO_MMIO_QUEUE_USED_LOW      0x0a0
+#define VIRTIO_MMIO_QUEUE_USED_HIGH     0x0a4
 #define VIRTIO_MMIO_CONFIG_GENERATION	0x0fc
-#define VIRTIO_MMIO_CONFIG		0x100
-
-/* PCI registers */
-#define VIRTIO_PCI_DEVICE_FEATURE_SEL	0x000
-#define VIRTIO_PCI_DEVICE_FEATURE	0x004
-#define VIRTIO_PCI_GUEST_FEATURE_SEL	0x008
-#define VIRTIO_PCI_GUEST_FEATURE	0x00c
-#define VIRTIO_PCI_MSIX_CONFIG          0x010
-#define VIRTIO_PCI_NUM_QUEUES           0x012
-#define VIRTIO_PCI_DEVICE_STATUS        0x014
-#define VIRTIO_PCI_CONFIG_GENERATION    0x015
-#define VIRTIO_PCI_QUEUE_SEL		0x016
-#define VIRTIO_PCI_QUEUE_SIZE	        0x018
-#define VIRTIO_PCI_QUEUE_MSIX_VECTOR    0x01a
-#define VIRTIO_PCI_QUEUE_ENABLE         0x01c
-#define VIRTIO_PCI_QUEUE_NOTIFY_OFF     0x01e
-#define VIRTIO_PCI_QUEUE_DESC_LOW	0x020
-#define VIRTIO_PCI_QUEUE_DESC_HIGH	0x024
-#define VIRTIO_PCI_QUEUE_AVAIL_LOW	0x028
-#define VIRTIO_PCI_QUEUE_AVAIL_HIGH	0x02c
-#define VIRTIO_PCI_QUEUE_USED_LOW	0x030
-#define VIRTIO_PCI_QUEUE_USED_HIGH	0x034
-
-#define VIRTIO_PCI_CFG_OFFSET          0x0000
-#define VIRTIO_PCI_ISR_OFFSET          0x1000
-#define VIRTIO_PCI_CONFIG_OFFSET       0x2000
-#define VIRTIO_PCI_NOTIFY_OFFSET       0x3000
-
-#define VIRTIO_PCI_CAP_LEN 16
+#define VIRTIO_MMIO_CONFIG              0x100
 
 #define MAX_QUEUE 8
 #define MAX_CONFIG_SPACE_SIZE 256
@@ -863,132 +835,6 @@ VIRTIODevice *virtio_block_init(VIRTIOBusDef *bus, BlockDevice *bs)
 }
 
 /*********************************************************************/
-/* network device */
-
-typedef struct VIRTIONetDevice {
-    VIRTIODevice common;
-    EthernetDevice *es;
-    int header_size;
-} VIRTIONetDevice;
-
-typedef struct {
-    uint8_t flags;
-    uint8_t gso_type;
-    uint16_t hdr_len;
-    uint16_t gso_size;
-    uint16_t csum_start;
-    uint16_t csum_offset;
-    uint16_t num_buffers;
-} VIRTIONetHeader;
-
-static int virtio_net_recv_request(VIRTIODevice *s, int queue_idx,
-                                   int desc_idx, int read_size,
-                                   int write_size)
-{
-    VIRTIONetDevice *s1 = (VIRTIONetDevice *)s;
-    EthernetDevice *es = s1->es;
-    VIRTIONetHeader h;
-    uint8_t *buf;
-    int len;
-
-    if (queue_idx == 1) {
-        /* send to network */
-        if (memcpy_from_queue(s, &h, queue_idx, desc_idx, 0, s1->header_size) < 0)
-            return 0;
-        len = read_size - s1->header_size;
-        buf = malloc(len);
-        memcpy_from_queue(s, buf, queue_idx, desc_idx, s1->header_size, len);
-        es->write_packet(es, buf, len);
-        free(buf);
-        virtio_consume_desc(s, queue_idx, desc_idx, 0);
-    }
-    return 0;
-}
-
-static BOOL virtio_net_can_write_packet(EthernetDevice *es)
-{
-    VIRTIODevice *s = es->device_opaque;
-    QueueState *qs = &s->queue[0];
-    uint16_t avail_idx;
-
-    if (!qs->ready)
-        return FALSE;
-    avail_idx = virtio_read16(s, qs->avail_addr + 2);
-    return qs->last_avail_idx != avail_idx;
-}
-
-static void virtio_net_write_packet(EthernetDevice *es, const uint8_t *buf, int buf_len)
-{
-    VIRTIODevice *s = es->device_opaque;
-    VIRTIONetDevice *s1 = (VIRTIONetDevice *)s;
-    int queue_idx = 0;
-    QueueState *qs = &s->queue[queue_idx];
-    int desc_idx;
-    VIRTIONetHeader h;
-    int len, read_size, write_size;
-    uint16_t avail_idx;
-
-    if (!qs->ready)
-        return;
-    avail_idx = virtio_read16(s, qs->avail_addr + 2);
-    if (qs->last_avail_idx == avail_idx)
-        return;
-    desc_idx = virtio_read16(s, qs->avail_addr + 4 + 
-                             (qs->last_avail_idx & (qs->num - 1)) * 2);
-    if (get_desc_rw_size(s, &read_size, &write_size, queue_idx, desc_idx))
-        return;
-    len = s1->header_size + buf_len; 
-    if (len > write_size)
-        return;
-    memset(&h, 0, s1->header_size);
-    memcpy_to_queue(s, queue_idx, desc_idx, 0, &h, s1->header_size);
-    memcpy_to_queue(s, queue_idx, desc_idx, s1->header_size, buf, buf_len);
-    virtio_consume_desc(s, queue_idx, desc_idx, len);
-    qs->last_avail_idx++;
-}
-
-static void virtio_net_set_carrier(EthernetDevice *es, BOOL carrier_state)
-{
-#if 0
-    VIRTIODevice *s1 = es->device_opaque;
-    VIRTIONetDevice *s = (VIRTIONetDevice *)s1;
-    int cur_carrier_state;
-
-    //    printf("virtio_net_set_carrier: %d\n", carrier_state);
-    cur_carrier_state = s->common.config_space[6] & 1;
-    if (cur_carrier_state != carrier_state) {
-        s->common.config_space[6] = (carrier_state << 0);
-        virtio_config_change_notify(s1);
-    }
-#endif
-}
-
-VIRTIODevice *virtio_net_init(VIRTIOBusDef *bus, EthernetDevice *es)
-{
-    VIRTIONetDevice *s;
-
-    s = mallocz(sizeof(*s));
-    virtio_init(&s->common, bus,
-                1, 6 + 2, virtio_net_recv_request);
-    /* VIRTIO_NET_F_MAC, VIRTIO_NET_F_STATUS */
-    s->common.device_features = (1 << 5) /* | (1 << 16) */;
-    s->common.queue[0].manual_recv = TRUE;
-    s->es = es;
-    memcpy(s->common.config_space, es->mac_addr, 6);
-    /* status */
-    s->common.config_space[6] = 0;
-    s->common.config_space[7] = 0;
-
-    s->header_size = sizeof(VIRTIONetHeader);
-    
-    es->device_opaque = s;
-    es->device_can_write_packet = virtio_net_can_write_packet;
-    es->device_write_packet = virtio_net_write_packet;
-    es->device_set_carrier = virtio_net_set_carrier;
-    return (VIRTIODevice *)s;
-}
-
-/*********************************************************************/
 /* console device */
 
 typedef struct VIRTIOConsoleDevice {
@@ -1130,22 +976,6 @@ typedef struct VIRTIOInputDevice {
     uint32_t buttons_state;
 } VIRTIOInputDevice;
 
-static const uint16_t buttons_list[] = {
-    BTN_LEFT, BTN_RIGHT, BTN_MIDDLE
-};
-
-static int virtio_input_recv_request(VIRTIODevice *s, int queue_idx,
-                                      int desc_idx, int read_size,
-                                      int write_size)
-{
-    if (queue_idx == 1) {
-        /* led & keyboard updates */
-        //        printf("%s: write_size=%d\n", __func__, write_size);
-        virtio_consume_desc(s, queue_idx, desc_idx, 0);
-    }
-    return 0;
-}
-
 /* return < 0 if could not send key event */
 static int virtio_input_queue_event(VIRTIODevice *s,
                                     uint16_t type, uint16_t code,
@@ -1189,189 +1019,6 @@ int virtio_input_send_key_event(VIRTIODevice *s, BOOL is_down,
     if (ret)
         return ret;
     return virtio_input_queue_event(s, VIRTIO_INPUT_EV_SYN, 0, 0);
-}
-
-/* also used for the tablet */
-int virtio_input_send_mouse_event(VIRTIODevice *s, int dx, int dy, int dz,
-                                  unsigned int buttons)
-{
-    VIRTIOInputDevice *s1 = (VIRTIOInputDevice *)s;
-    int ret, i, b, last_b;
-
-    if (s1->type != VIRTIO_INPUT_TYPE_MOUSE &&
-        s1->type != VIRTIO_INPUT_TYPE_TABLET)
-        return -1;
-    if (s1->type == VIRTIO_INPUT_TYPE_MOUSE) {
-        ret = virtio_input_queue_event(s, VIRTIO_INPUT_EV_REL, REL_X, dx);
-        if (ret != 0)
-            return ret;
-        ret = virtio_input_queue_event(s, VIRTIO_INPUT_EV_REL, REL_Y, dy);
-        if (ret != 0)
-            return ret;
-    } else {
-        ret = virtio_input_queue_event(s, VIRTIO_INPUT_EV_ABS, ABS_X, dx);
-        if (ret != 0)
-            return ret;
-        ret = virtio_input_queue_event(s, VIRTIO_INPUT_EV_ABS, ABS_Y, dy);
-        if (ret != 0)
-            return ret;
-    }
-    if (dz != 0) {
-        ret = virtio_input_queue_event(s, VIRTIO_INPUT_EV_REL, REL_WHEEL, dz);
-        if (ret != 0)
-            return ret;
-    }
-
-    if (buttons != s1->buttons_state) {
-        for(i = 0; i < countof(buttons_list); i++) {
-            b = (buttons >> i) & 1;
-            last_b = (s1->buttons_state >> i) & 1;
-            if (b != last_b) {
-                ret = virtio_input_queue_event(s, VIRTIO_INPUT_EV_KEY,
-                                               buttons_list[i], b);
-                if (ret != 0)
-                    return ret;
-            }
-        }
-        s1->buttons_state = buttons;
-    }
-
-    return virtio_input_queue_event(s, VIRTIO_INPUT_EV_SYN, 0, 0);
-}
-
-static void set_bit(uint8_t *tab, int k)
-{
-    tab[k >> 3] |= 1 << (k & 7);
-}
-
-static void virtio_input_config_write(VIRTIODevice *s)
-{
-    VIRTIOInputDevice *s1 = (VIRTIOInputDevice *)s;
-    uint8_t *config = s->config_space;
-    int i;
-    
-    //    printf("config_write: %02x %02x\n", config[0], config[1]);
-    switch(config[0]) {
-    case VIRTIO_INPUT_CFG_UNSET:
-        break;
-    case VIRTIO_INPUT_CFG_ID_NAME:
-        {
-            const char *name;
-            int len;
-            switch(s1->type) {
-            case VIRTIO_INPUT_TYPE_KEYBOARD:
-                name = "virtio_keyboard";
-                break;
-            case VIRTIO_INPUT_TYPE_MOUSE:
-                name = "virtio_mouse";
-                break;
-            case VIRTIO_INPUT_TYPE_TABLET:
-                name = "virtio_tablet";
-                break;
-            default:
-                abort();
-            }
-            len = strlen(name);
-            config[2] = len;
-            memcpy(config + 8, name, len);
-        }
-        break;
-    default:
-    case VIRTIO_INPUT_CFG_ID_SERIAL:
-    case VIRTIO_INPUT_CFG_ID_DEVIDS:
-    case VIRTIO_INPUT_CFG_PROP_BITS:
-        config[2] = 0; /* size of reply */
-        break;
-    case VIRTIO_INPUT_CFG_EV_BITS:
-        config[2] = 0;
-        switch(s1->type) {
-        case VIRTIO_INPUT_TYPE_KEYBOARD:
-            switch(config[1]) {
-            case VIRTIO_INPUT_EV_KEY:
-                config[2] = 128 / 8;
-                memset(config + 8, 0xff, 128 / 8); /* bitmap */
-                break;
-            case VIRTIO_INPUT_EV_REP: /* allow key repetition */
-                config[2] = 1;
-                break;
-            default:
-                break;
-            }
-            break;
-        case VIRTIO_INPUT_TYPE_MOUSE:
-            switch(config[1]) {
-            case VIRTIO_INPUT_EV_KEY:
-                config[2] = 512 / 8;
-                memset(config + 8, 0, 512 / 8); /* bitmap */
-                for(i = 0; i < countof(buttons_list); i++)
-                    set_bit(config + 8, buttons_list[i]);
-                break;
-            case VIRTIO_INPUT_EV_REL:
-                config[2] = 2;
-                config[8] = 0;
-                config[9] = 0;
-                set_bit(config + 8, REL_X);
-                set_bit(config + 8, REL_Y);
-                set_bit(config + 8, REL_WHEEL);
-                break;
-            default:
-                break;
-            }
-            break;
-        case VIRTIO_INPUT_TYPE_TABLET:
-            switch(config[1]) {
-            case VIRTIO_INPUT_EV_KEY:
-                config[2] = 512 / 8;
-                memset(config + 8, 0, 512 / 8); /* bitmap */
-                for(i = 0; i < countof(buttons_list); i++)
-                    set_bit(config + 8, buttons_list[i]);
-                break;
-            case VIRTIO_INPUT_EV_REL:
-                config[2] = 2;
-                config[8] = 0;
-                config[9] = 0;
-                set_bit(config + 8, REL_WHEEL);
-                break;
-            case VIRTIO_INPUT_EV_ABS:
-                config[2] = 1;
-                config[8] = 0;
-                set_bit(config + 8, ABS_X);
-                set_bit(config + 8, ABS_Y);
-                break;
-            default:
-                break;
-            }
-            break;
-        default:
-            abort();
-        }
-        break;
-    case VIRTIO_INPUT_CFG_ABS_INFO:
-        if (s1->type == VIRTIO_INPUT_TYPE_TABLET && config[1] <= 1) {
-            /* for ABS_X and ABS_Y */
-            config[2] = 5 * 4;
-            put_le32(config + 8, 0); /* min */
-            put_le32(config + 12, VIRTIO_INPUT_ABS_SCALE - 1) ; /* max */
-            put_le32(config + 16, 0); /* fuzz */
-            put_le32(config + 20, 0); /* flat */
-            put_le32(config + 24, 0); /* res */
-        }
-        break;
-    }
-}
-
-VIRTIODevice *virtio_input_init(VIRTIOBusDef *bus, VirtioInputTypeEnum type)
-{
-    VIRTIOInputDevice *s;
-
-    s = mallocz(sizeof(*s));
-    virtio_init(&s->common, bus,
-                18, 256, virtio_input_recv_request);
-    s->common.queue[0].manual_recv = TRUE;
-    s->common.device_features = 0;
-    s->common.config_write = virtio_input_config_write;
-    s->type = type;
-    return (VIRTIODevice *)s;
 }
 
 /*********************************************************************/

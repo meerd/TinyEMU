@@ -35,7 +35,6 @@
 
 #include "cutils.h"
 #include "json.h"
-#include "fs_utils.h"
 
 static JSONValue parse_string(const char **pp)
 {

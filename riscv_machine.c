@@ -576,7 +576,6 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
     char isa_string[128], *q;
     uint32_t misa;
     uint32_t tab[4];
-    FBDevice *fb_dev;
     
     s = fdt_init();
 
@@ -688,18 +687,6 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
         tab[1] = VIRTIO_IRQ + i;
         fdt_prop_tab_u32(s, "interrupts-extended", tab, 2);
         fdt_end_node(s); /* virtio */
-    }
-
-    fb_dev = m->common.fb_dev;
-    if (fb_dev) {
-        fdt_begin_node_num(s, "framebuffer", FRAMEBUFFER_BASE_ADDR);
-        fdt_prop_str(s, "compatible", "simple-framebuffer");
-        fdt_prop_tab_u64_2(s, "reg", FRAMEBUFFER_BASE_ADDR, fb_dev->fb_size);
-        fdt_prop_u32(s, "width", fb_dev->width);
-        fdt_prop_u32(s, "height", fb_dev->height);
-        fdt_prop_u32(s, "stride", fb_dev->stride);
-        fdt_prop_str(s, "format", "a8r8g8b8");
-        fdt_end_node(s); /* framebuffer */
     }
     
     fdt_end_node(s); /* soc */

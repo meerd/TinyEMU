@@ -194,16 +194,4 @@ struct FSDevice {
 };
 
 FSDevice *fs_disk_init(const char *root_path);
-FSDevice *fs_mem_init(void);
-FSDevice *fs_net_init(const char *url, void (*start)(void *opaque), void *opaque);
-void fs_net_set_pwd(FSDevice *fs, const char *pwd);
-
-void fs_export_file(const char *filename,
-                    const uint8_t *buf, int buf_len);
 void fs_end(FSDevice *fs);
-void fs_dump_cache_load(FSDevice *fs1, const char *filename);
-
-FSFile *fs_dup(FSDevice *fs, FSFile *f);
-FSFile *fs_walk_path1(FSDevice *fs, FSFile *f, const char *path,
-                      char **pname);
-FSFile *fs_walk_path(FSDevice *fs, FSFile *f, const char *path);

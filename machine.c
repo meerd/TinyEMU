@@ -36,7 +36,6 @@
 #include "iomem.h"
 #include "virtio.h"
 #include "machine.h"
-#include "fs_utils.h"
 
 void __attribute__((format(printf, 1, 2))) vm_error(const char *fmt, ...)
 {
@@ -164,49 +163,10 @@ static char *cmdline_subst(const char *cmdline)
     return (char *)dbuf.buf;
 }
 
-static BOOL find_name(const char *name, const char *name_list)
-{
-    size_t len;
-    const char *p, *r;
-    
-    p = name_list;
-    for(;;) {
-        r = strchr(p, ',');
-        if (!r) {
-            if (!strcmp(name, p))
-                return TRUE;
-            break;
-        } else {
-            len = r - p;
-            if (len == strlen(name) && !memcmp(name, p, len))
-                return TRUE;
-            p = r + 1;
-        }
-    }
-    return FALSE;
-}
-
-static const VirtMachineClass *virt_machine_list[] = {
-   &riscv_machine_class,
-    NULL,
-};
-
-static const VirtMachineClass *virt_machine_find_class(const char *machine_name)
-{
-    const VirtMachineClass *vmc, **pvmc;
-    
-    for(pvmc = virt_machine_list; *pvmc != NULL; pvmc++) {
-        vmc = *pvmc;
-        if (find_name(machine_name, vmc->machine_names))
-            return vmc;
-    }
-    return NULL;
-}
-
 static int virt_machine_parse_config(VirtMachineParams *p,
                                      char *config_file_str, int len)
 {
-    int version, val;
+    int val;
     const char *tag_name, *str;
     char buf1[256];
     JSONValue cfg, obj, el;
@@ -218,26 +178,10 @@ static int virt_machine_parse_config(VirtMachineParams *p,
         return -1;
     }
 
-    if (vm_get_int(cfg, "version", &version) < 0)
-        goto tag_fail;
-    if (version != VM_CONFIG_VERSION) {
-        if (version > VM_CONFIG_VERSION) {
-            vm_error("The emulator is too old to run this VM: please upgrade\n");
-            return -1;
-        } else {
-            vm_error("The VM configuration file is too old for this emulator version: please upgrade the VM configuration file\n");
-            return -1;
-        }
-    }
-    
-    if (vm_get_str(cfg, "machine", &str) < 0)
-        goto tag_fail;
-    p->machine_name = strdup(str);
-    p->vmc = virt_machine_find_class(p->machine_name);
-    if (!p->vmc) {
-        vm_error("Unknown machine name: %s\n", p->machine_name);
-        goto tag_fail;
-    }
+    /* VM Version : 1       */
+    /* Machine    : riscv32 */
+    p->machine_name = "riscv32";
+    p->vmc = &riscv_machine_class;
     p->vmc->virt_machine_set_defaults(p);
 
     tag_name = "memory_size";
@@ -306,60 +250,6 @@ static int virt_machine_parse_config(VirtMachineParams *p,
         }
         p->tab_fs[p->fs_count].tag = strdup(str);
         p->fs_count++;
-    }
-
-    for(;;) {
-        snprintf(buf1, sizeof(buf1), "eth%d", p->eth_count);
-        obj = json_object_get(cfg, buf1);
-        if (json_is_undefined(obj))
-            break;
-        if (p->eth_count >= MAX_ETH_DEVICE) {
-            vm_error("Too many ethernet interfaces\n");
-            return -1;
-        }
-        if (vm_get_str(obj, "driver", &str) < 0)
-            goto tag_fail;
-        p->tab_eth[p->eth_count].driver = strdup(str);
-        if (!strcmp(str, "tap")) {
-            if (vm_get_str(obj, "ifname", &str) < 0)
-                goto tag_fail;
-            p->tab_eth[p->eth_count].ifname = strdup(str);
-        }
-        p->eth_count++;
-    }
-
-    p->display_device = NULL;
-    obj = json_object_get(cfg, "display0");
-    if (!json_is_undefined(obj)) {
-        if (vm_get_str(obj, "device", &str) < 0)
-            goto tag_fail;
-        p->display_device = strdup(str);
-        if (vm_get_int(obj, "width", &p->width) < 0)
-            goto tag_fail;
-        if (vm_get_int(obj, "height", &p->height) < 0)
-            goto tag_fail;
-        if (vm_get_str_opt(obj, "vga_bios", &str) < 0)
-            goto tag_fail;
-        if (str) {
-            p->files[VM_FILE_VGA_BIOS].filename = strdup(str);
-        }
-    }
-
-    if (vm_get_str_opt(cfg, "input_device", &str) < 0)
-        goto tag_fail;
-    p->input_device = strdup_null(str);
-
-    if (vm_get_str_opt(cfg, "accel", &str) < 0)
-        goto tag_fail;
-    if (str) {
-        if (!strcmp(str, "none")) {
-            p->accel_enable = FALSE;
-        } else if (!strcmp(str, "auto")) {
-            p->accel_enable = TRUE;
-        } else {
-            vm_error("unsupported 'accel' config: %s\n", str);
-            return -1;
-        }
     }
 
     tag_name = "rtc_local_time";
@@ -546,7 +436,6 @@ void virt_machine_free_config(VirtMachineParams *p)
 {
     int i;
     
-    free(p->machine_name);
     free(p->cmdline);
     for(i = 0; i < VM_FILE_COUNT; i++) {
         free(p->files[i].filename);
@@ -560,12 +449,6 @@ void virt_machine_free_config(VirtMachineParams *p)
         free(p->tab_fs[i].filename);
         free(p->tab_fs[i].tag);
     }
-    for(i = 0; i < p->eth_count; i++) {
-        free(p->tab_eth[i].driver);
-        free(p->tab_eth[i].ifname);
-    }
-    free(p->input_device);
-    free(p->display_device);
     free(p->cfg_filename);
 }
 

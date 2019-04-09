@@ -70,31 +70,6 @@ struct BlockDevice {
 
 VIRTIODevice *virtio_block_init(VIRTIOBusDef *bus, BlockDevice *bs);
 
-/* network device */
-
-typedef struct EthernetDevice EthernetDevice; 
-
-struct EthernetDevice {
-    uint8_t mac_addr[6]; /* mac address of the interface */
-    void (*write_packet)(EthernetDevice *net,
-                         const uint8_t *buf, int len);
-    void *opaque;
-    void (*select_fill)(EthernetDevice *net, int *pfd_max,
-                        fd_set *rfds, fd_set *wfds, fd_set *efds,
-                        int *pdelay);
-    void (*select_poll)(EthernetDevice *net, 
-                        fd_set *rfds, fd_set *wfds, fd_set *efds,
-                        int select_ret);
-    /* the following is set by the device */
-    void *device_opaque;
-    BOOL (*device_can_write_packet)(EthernetDevice *net);
-    void (*device_write_packet)(EthernetDevice *net,
-                                const uint8_t *buf, int len);
-    void (*device_set_carrier)(EthernetDevice *net, BOOL carrier_state);
-};
-
-VIRTIODevice *virtio_net_init(VIRTIOBusDef *bus, EthernetDevice *es);
-
 /* console device */
 
 typedef struct {
@@ -121,10 +96,6 @@ typedef enum {
 
 int virtio_input_send_key_event(VIRTIODevice *s, BOOL is_down,
                                 uint16_t key_code);
-int virtio_input_send_mouse_event(VIRTIODevice *s, int dx, int dy, int dz,
-                                  unsigned int buttons);
-
-VIRTIODevice *virtio_input_init(VIRTIOBusDef *bus, VirtioInputTypeEnum type);
 
 /* 9p filesystem device */
 
