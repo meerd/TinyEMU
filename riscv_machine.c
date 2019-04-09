@@ -62,18 +62,18 @@ typedef struct RISCVMachine {
     int virtio_count;
 } RISCVMachine;
 
-#define LOW_RAM_SIZE   0x00010000 /* 64KB */
-#define RAM_BASE_ADDR  0x80000000
-#define CLINT_BASE_ADDR 0x02000000
-#define CLINT_SIZE      0x000c0000
-#define HTIF_BASE_ADDR 0x40008000
-#define IDE_BASE_ADDR  0x40009000
-#define VIRTIO_BASE_ADDR 0x40010000
-#define VIRTIO_SIZE      0x1000
-#define VIRTIO_IRQ       1
-#define PLIC_BASE_ADDR 0x40100000
-#define PLIC_SIZE      0x00400000
-#define FRAMEBUFFER_BASE_ADDR 0x41000000
+#define LOW_RAM_SIZE            0x00010000 /* 64KB */
+#define RAM_BASE_ADDR           0x80000000
+#define CLINT_BASE_ADDR         0x02000000
+#define CLINT_SIZE              0x000c0000
+#define HTIF_BASE_ADDR          0x40008000
+#define IDE_BASE_ADDR           0x40009000
+#define VIRTIO_BASE_ADDR        0x40010000
+#define VIRTIO_SIZE             0x1000
+#define VIRTIO_IRQ              1
+#define PLIC_BASE_ADDR          0x40100000
+#define PLIC_SIZE               0x00400000
+#define FRAMEBUFFER_BASE_ADDR   0x41000000
 
 #define RTC_FREQ 10000000
 #define RTC_FREQ_DIV 16 /* arbitrary, relative to CPU freq to have a
@@ -175,22 +175,6 @@ static void htif_write(void *opaque, uint32_t offset, uint32_t val,
         break;
     }
 }
-
-#if 0
-static void htif_poll(RISCVMachine *s)
-{
-    uint8_t buf[1];
-    int ret;
-
-    if (s->htif_fromhost == 0) {
-        ret = s->console->read_data(s->console->opaque, buf, 1);
-        if (ret == 1) {
-            s->htif_fromhost = ((uint64_t)1 << 56) | ((uint64_t)0 << 48) |
-                buf[0];
-        }
-    }
-}
-#endif
 
 static uint32_t clint_read(void *opaque, uint32_t offset, int size_log2)
 {
@@ -809,17 +793,8 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     int irq_num, i, max_xlen, ram_flags;
     VIRTIOBusDef vbus_s, *vbus = &vbus_s;
 
-
-    if (!strcmp(p->machine_name, "riscv32")) {
-        max_xlen = 32;
-    } else if (!strcmp(p->machine_name, "riscv64")) {
-        max_xlen = 64;
-    } else if (!strcmp(p->machine_name, "riscv128")) {
-        max_xlen = 128;
-    } else {
-        vm_error("unsupported machine: %s\n", p->machine_name);
-        return NULL;
-    }
+    /* Only riscv32 is supported */
+    max_xlen = 32;
     
     s = mallocz(sizeof(*s));
     s->common.vmc = p->vmc;
@@ -870,16 +845,6 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
         irq_num++;
         s->virtio_count++;
     }
-    
-    /* virtio net device */
-    for(i = 0; i < p->eth_count; i++) {
-        vbus->irq = &s->plic_irq[irq_num];
-        virtio_net_init(vbus, p->tab_eth[i].net);
-        s->common.net = p->tab_eth[i].net;
-        vbus->addr += VIRTIO_SIZE;
-        irq_num++;
-        s->virtio_count++;
-    }
 
     /* virtio block device */
     for(i = 0; i < p->drive_count; i++) {
@@ -902,22 +867,6 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
         vbus->addr += VIRTIO_SIZE;
         irq_num++;
         s->virtio_count++;
-    }
-
-    if (p->display_device) {
-        FBDevice *fb_dev;
-        fb_dev = mallocz(sizeof(*fb_dev));
-        s->common.fb_dev = fb_dev;
-        if (!strcmp(p->display_device, "simplefb")) {
-            simplefb_init(s->mem_map,
-                          FRAMEBUFFER_BASE_ADDR,
-                          fb_dev,
-                          p->width, p->height);
-            
-        } else {
-            vm_error("unsupported display device: %s\n", p->display_device);
-            exit(1);
-        }
     }
 
     if (p->input_device) {
@@ -1016,7 +965,7 @@ static void riscv_vm_send_mouse_event(VirtMachine *s1, int dx, int dy, int dz,
 }
 
 const VirtMachineClass riscv_machine_class = {
-    "riscv32,riscv64,riscv128",
+    "riscv32",
     riscv_machine_set_defaults,
     riscv_machine_init,
     riscv_machine_end,

@@ -29,9 +29,6 @@
 #elif F_SIZE == 64
 #define F_UHALF uint32_t
 #define F_UINT uint64_t
-#ifdef HAVE_INT128
-#define F_ULONG uint128_t
-#endif
 #define MANT_SIZE 52
 #define EXP_SIZE 11
 #elif F_SIZE == 128
@@ -1085,11 +1082,6 @@ uint64_t glue(glue(cvt_sf, F_SIZE), _sf64)(F_UINT a, RoundingModeEnum rm,
 
 #define ICVT_SIZE 64
 #include "softfp_template_icvt.h"
-
-#ifdef HAVE_INT128
-#define ICVT_SIZE 128
-#include "softfp_template_icvt.h"
-#endif
 
 #undef F_SIZE
 #undef F_UINT

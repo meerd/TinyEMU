@@ -91,7 +91,7 @@ static inline uint32_t mulhu32(uint32_t a, uint32_t b)
     return ((int64_t)a * (int64_t)b) >> 32;
 }
 
-#elif XLEN == 64 && defined(HAVE_INT128)
+#elif XLEN == 64
 
 static inline uint64_t mulh64(int64_t a, int64_t b)
 {

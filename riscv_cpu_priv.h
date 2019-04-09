@@ -39,12 +39,6 @@
 
 #define CONFIG_EXT_C /* compressed instructions */
 
-#if defined(EMSCRIPTEN)
-#define USE_GLOBAL_STATE
-/* use local variables slows down the generated JS code */
-#define USE_GLOBAL_VARIABLES
-#endif
-
 #if MAX_XLEN == 32
 typedef uint32_t target_ulong;
 typedef int32_t target_long;

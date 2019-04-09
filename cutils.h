@@ -25,6 +25,7 @@
 #define CUTILS_H
 
 #include <inttypes.h>
+#include <byteswap.h>
 
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
@@ -56,16 +57,6 @@ enum {
 };
 #endif
 
-/* this test works at least with gcc */
-#if defined(__SIZEOF_INT128__)
-#define HAVE_INT128
-#endif
-
-#ifdef HAVE_INT128
-typedef __int128 int128_t;
-typedef unsigned __int128 uint128_t;
-#endif
-
 static inline int max_int(int a, int b)
 {
     if (a > b)
@@ -83,16 +74,6 @@ static inline int min_int(int a, int b)
 }
 
 void *mallocz(size_t size);
-
-#if defined(_WIN32)
-static inline uint32_t bswap_32(uint32_t v)
-{
-    return ((v & 0xff000000) >> 24) | ((v & 0x00ff0000) >>  8) |
-        ((v & 0x0000ff00) <<  8) | ((v & 0x000000ff) << 24);
-}
-#else
-#include <byteswap.h>
-#endif
 
 static inline uint16_t get_le16(const uint8_t *ptr)
 {

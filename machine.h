@@ -168,28 +168,3 @@ static inline void vm_send_key_event(VirtMachine *s1, BOOL is_down, uint16_t key
 {
     s1->vmc->vm_send_key_event(s1, is_down, key_code);
 }
-
-/* gui */
-void sdl_refresh(VirtMachine *m);
-void sdl_init(int width, int height);
-
-/* simplefb.c */
-typedef struct SimpleFBState SimpleFBState;
-SimpleFBState *simplefb_init(PhysMemoryMap *map, uint64_t phys_addr,
-                             FBDevice *fb_dev, int width, int height);
-void simplefb_refresh(FBDevice *fb_dev,
-                      SimpleFBDrawFunc *redraw_func, void *opaque,
-                      PhysMemoryRange *mem_range,
-                      int fb_page_count);
-
-/* vga.c */
-typedef struct VGAState VGAState;
-VGAState *pci_vga_init(PCIBus *bus, FBDevice *fb_dev,
-                       int width, int height,
-                       const uint8_t *vga_rom_buf, int vga_rom_size);
-                      
-/* block_net.c */
-BlockDevice *block_device_init_http(const char *url,
-                                    int max_cache_size_kb,
-                                    void (*start_cb)(void *opaque),
-                                    void *start_opaque);
