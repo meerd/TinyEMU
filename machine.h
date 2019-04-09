@@ -90,11 +90,9 @@ struct VirtMachineClass {
     void (*virt_machine_end)(VirtMachine *s);
     int (*virt_machine_get_sleep_duration)(VirtMachine *s, int delay);
     void (*virt_machine_interp)(VirtMachine *s, int max_exec_cycle);
-    void (*vm_send_key_event)(VirtMachine *s1, BOOL is_down, uint16_t key_code);
 };
 
 extern const VirtMachineClass riscv_machine_class;
-extern const VirtMachineClass pc_machine_class;
 
 void __attribute__((format(printf, 1, 2))) vm_error(const char *fmt, ...);
 int vm_get_int(JSONValue obj, const char *name, int *pval);
@@ -110,6 +108,7 @@ char *get_file_path(const char *base_filename, const char *filename);
 void virt_machine_free_config(VirtMachineParams *p);
 VirtMachine *virt_machine_init(const VirtMachineParams *p);
 void virt_machine_end(VirtMachine *s);
+
 static inline int virt_machine_get_sleep_duration(VirtMachine *s, int delay)
 {
     return s->vmc->virt_machine_get_sleep_duration(s, delay);
@@ -119,7 +118,3 @@ static inline void virt_machine_interp(VirtMachine *s, int max_exec_cycle)
     s->vmc->virt_machine_interp(s, max_exec_cycle);
 }
 
-static inline void vm_send_key_event(VirtMachine *s1, BOOL is_down, uint16_t key_code)
-{
-    s1->vmc->vm_send_key_event(s1, is_down, key_code);
-}

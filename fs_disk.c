@@ -57,8 +57,6 @@ struct FSFile {
     } u;
 };
 
-
-
 static void fs_delete(FSDevice *fs, FSFile *f)
 {
     if (f->is_opened)
@@ -76,7 +74,6 @@ static FSFile *fid_create(FSDevice *s1, char *path, uint32_t uid)
     f->uid = uid;
     return f;
 }
-
 
 static int errno_table[][2] = {
     { P9_EPERM, EPERM },

@@ -53,11 +53,6 @@ typedef struct RISCVMachine {
     /* PLIC */
     uint32_t plic_pending_irq, plic_served_irq;
     IRQSignal plic_irq[32]; /* IRQ 0 is not used */
-    /* HTIF */
-    uint64_t htif_tohost, htif_fromhost;
-
-    VIRTIODevice *keyboard_dev;
-
     int virtio_count;
 } RISCVMachine;
 
@@ -65,7 +60,6 @@ typedef struct RISCVMachine {
 #define RAM_BASE_ADDR           0x80000000
 #define CLINT_BASE_ADDR         0x02000000
 #define CLINT_SIZE              0x000c0000
-#define HTIF_BASE_ADDR          0x40008000
 #define IDE_BASE_ADDR           0x40009000
 #define VIRTIO_BASE_ADDR        0x40010000
 #define VIRTIO_SIZE             0x1000
@@ -96,83 +90,6 @@ static uint64_t rtc_get_time(RISCVMachine *m)
     }
     //    printf("rtc_time=%" PRId64 "\n", val);
     return val;
-}
-
-static uint32_t htif_read(void *opaque, uint32_t offset,
-                          int size_log2)
-{
-    RISCVMachine *s = opaque;
-    uint32_t val;
-
-    assert(size_log2 == 2);
-    switch(offset) {
-    case 0:
-        val = s->htif_tohost;
-        break;
-    case 4:
-        val = s->htif_tohost >> 32;
-        break;
-    case 8:
-        val = s->htif_fromhost;
-        break;
-    case 12:
-        val = s->htif_fromhost >> 32;
-        break;
-    default:
-        val = 0;
-        break;
-    }
-    return val;
-}
-
-static void htif_handle_cmd(RISCVMachine *s)
-{
-    uint32_t device, cmd;
-
-    device = s->htif_tohost >> 56;
-    cmd = (s->htif_tohost >> 48) & 0xff;
-    if (s->htif_tohost == 1) {
-        /* shuthost */
-        printf("\nPower off.\n");
-        exit(0);
-    } else if (device == 1 && cmd == 1) {
-        uint8_t buf[1];
-        buf[0] = s->htif_tohost & 0xff;
-        s->common.console->write_data(s->common.console->opaque, buf, 1);
-        s->htif_tohost = 0;
-        s->htif_fromhost = ((uint64_t)device << 56) | ((uint64_t)cmd << 48);
-    } else if (device == 1 && cmd == 0) {
-        /* request keyboard interrupt */
-        s->htif_tohost = 0;
-    } else {
-        printf("HTIF: unsupported tohost=0x%016" PRIx64 "\n", s->htif_tohost);
-    }
-}
-
-static void htif_write(void *opaque, uint32_t offset, uint32_t val,
-                       int size_log2)
-{
-    RISCVMachine *s = opaque;
-
-    assert(size_log2 == 2);
-    switch(offset) {
-    case 0:
-        s->htif_tohost = (s->htif_tohost & ~0xffffffff) | val;
-        break;
-    case 4:
-        s->htif_tohost = (s->htif_tohost & 0xffffffff) | ((uint64_t)val << 32);
-        htif_handle_cmd(s);
-        break;
-    case 8:
-        s->htif_fromhost = (s->htif_fromhost & ~0xffffffff) | val;
-        break;
-    case 12:
-        s->htif_fromhost = (s->htif_fromhost & 0xffffffff) |
-            (uint64_t)val << 32;
-        break;
-    default:
-        break;
-    }
 }
 
 static uint32_t clint_read(void *opaque, uint32_t offset, int size_log2)
@@ -636,10 +553,6 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
     
     fdt_end_node(s); /* memory */
 
-    fdt_begin_node(s, "htif");
-    fdt_prop_str(s, "compatible", "ucb,htif0");
-    fdt_end_node(s); /* htif */
-
     fdt_begin_node(s, "soc");
     fdt_prop_u32(s, "#address-cells", 2);
     fdt_prop_u32(s, "#size-cells", 2);
@@ -810,12 +723,11 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
                         clint_read, clint_write, DEVIO_SIZE32);
     cpu_register_device(s->mem_map, PLIC_BASE_ADDR, PLIC_SIZE, s,
                         plic_read, plic_write, DEVIO_SIZE32);
+
     for(i = 1; i < 32; i++) {
         irq_init(&s->plic_irq[i], plic_set_irq, s, i);
     }
 
-    cpu_register_device(s->mem_map, HTIF_BASE_ADDR, 16,
-                        s, htif_read, htif_write, DEVIO_SIZE32);
     s->common.console = p->console;
 
     memset(vbus, 0, sizeof(*vbus));
@@ -906,21 +818,11 @@ static void riscv_machine_interp(VirtMachine *s1, int max_exec_cycle)
     riscv_cpu_interp(s->cpu_state, max_exec_cycle);
 }
 
-static void riscv_vm_send_key_event(VirtMachine *s1, BOOL is_down,
-                                    uint16_t key_code)
-{
-    RISCVMachine *s = (RISCVMachine *)s1;
-    if (s->keyboard_dev) {
-        virtio_input_send_key_event(s->keyboard_dev, is_down, key_code);
-    }
-}
-
 const VirtMachineClass riscv_machine_class = {
     "riscv32",
     riscv_machine_set_defaults,
     riscv_machine_init,
     riscv_machine_end,
     riscv_machine_get_sleep_duration,
-    riscv_machine_interp,
-    riscv_vm_send_key_event
+    riscv_machine_interp
 };

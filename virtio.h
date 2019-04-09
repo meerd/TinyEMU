@@ -84,19 +84,6 @@ int virtio_console_get_write_len(VIRTIODevice *s);
 int virtio_console_write_data(VIRTIODevice *s, const uint8_t *buf, int buf_len);
 void virtio_console_resize_event(VIRTIODevice *s, int width, int height);
 
-/* input device */
-
-typedef enum {
-    VIRTIO_INPUT_TYPE_KEYBOARD,
-    VIRTIO_INPUT_TYPE_MOUSE,
-    VIRTIO_INPUT_TYPE_TABLET,
-} VirtioInputTypeEnum;
-
-#define VIRTIO_INPUT_ABS_SCALE 32768
-
-int virtio_input_send_key_event(VIRTIODevice *s, BOOL is_down,
-                                uint16_t key_code);
-
 /* 9p filesystem device */
 
 #include "fs.h"

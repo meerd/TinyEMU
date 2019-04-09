@@ -1,6 +1,6 @@
 /*
  * RISCV CPU emulator
- * 
+ *
  * Copyright (c) 2016-2017 Fabrice Bellard
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -54,15 +54,6 @@
 #include "softfp.h"
 #endif
 
-#ifdef USE_GLOBAL_STATE
-static RISCVCPUState riscv_cpu_global_state;
-#endif
-#ifdef USE_GLOBAL_VARIABLES
-#define code_ptr s->__code_ptr
-#define code_end s->__code_end
-#define code_to_pc_addend s->__code_to_pc_addend
-#endif
-
 #ifdef CONFIG_LOGFILE
 static FILE *log_file;
 
@@ -87,17 +78,10 @@ static void __attribute__((format(printf, 1, 2), unused)) log_printf(const char 
     va_end(ap);
 }
 
-#if MAX_XLEN == 128
-static void fprint_target_ulong(FILE *f, target_ulong a)
-{
-    fprintf(f, "%016" PRIx64 "%016" PRIx64, (uint64_t)(a >> 64), (uint64_t)a);
-}
-#else
 static void fprint_target_ulong(FILE *f, target_ulong a)
 {
     fprintf(f, "%" PR_target_ulong, a);
 }
-#endif
 
 static void print_target_ulong(target_ulong a)
 {
@@ -348,21 +332,6 @@ int target_read_slow(RISCVCPUState *s, mem_uint_t *pval,
             }
             break;
 #endif
-#if MLEN >= 128
-        case 4:
-            {
-                uint128_t v0, v1;
-                addr -= al;
-                err = target_read_u128(s, &v0, addr);
-                if (err)
-                    return err;
-                err = target_read_u128(s, &v1, addr + 16);
-                if (err)
-                    return err;
-                ret = (v0 >> (al * 8)) | (v1 << (128 - al * 8));
-            }
-            break;
-#endif
         default:
             abort();
         }
@@ -400,11 +369,6 @@ int target_read_slow(RISCVCPUState *s, mem_uint_t *pval,
                 ret = *(uint64_t *)ptr;
                 break;
 #endif
-#if MLEN >= 128
-            case 4:
-                ret = *(uint128_t *)ptr;
-                break;
-#endif
             default:
                 abort();
             }
@@ -418,7 +382,7 @@ int target_read_slow(RISCVCPUState *s, mem_uint_t *pval,
                 /* emulate 64 bit access */
                 ret = pr->read_func(pr->opaque, offset, 2);
                 ret |= (uint64_t)pr->read_func(pr->opaque, offset + 4, 2) << 32;
-                
+
             }
 #endif
             else {
@@ -443,7 +407,7 @@ int target_write_slow(RISCVCPUState *s, target_ulong addr,
     target_ulong paddr, offset;
     uint8_t *ptr;
     PhysMemoryRange *pr;
-    
+
     /* first handle unaligned accesses */
     size = 1 << size_log2;
     if ((addr & (size - 1)) != 0) {
@@ -485,11 +449,6 @@ int target_write_slow(RISCVCPUState *s, target_ulong addr,
 #if MLEN >= 64
             case 3:
                 *(uint64_t *)ptr = val;
-                break;
-#endif
-#if MLEN >= 128
-            case 4:
-                *(uint128_t *)ptr = val;
                 break;
 #endif
             default:
@@ -540,7 +499,7 @@ static no_inline __exception int target_read_insn_slow(RISCVCPUState *s,
     target_ulong paddr;
     uint8_t *ptr;
     PhysMemoryRange *pr;
-    
+
     if (get_phys_addr(s, &paddr, addr, ACCESS_CODE)) {
         s->pending_tval = addr;
         s->pending_exception = CAUSE_FETCH_PAGE_FAULT;
@@ -567,7 +526,7 @@ static inline __exception int target_read_insn_u16(RISCVCPUState *s, uint16_t *p
 {
     uint32_t tlb_idx;
     uint8_t *ptr;
-    
+
     tlb_idx = (addr >> PG_SHIFT) & (TLB_SIZE - 1);
     if (likely(s->tlb_code[tlb_idx].vaddr == (addr & ~PG_MASK))) {
         ptr = (uint8_t *)(s->tlb_code[tlb_idx].mem_addend +
@@ -583,7 +542,7 @@ static inline __exception int target_read_insn_u16(RISCVCPUState *s, uint16_t *p
 static void tlb_init(RISCVCPUState *s)
 {
     int i;
-    
+
     for(i = 0; i < TLB_SIZE; i++) {
         s->tlb_read[i].vaddr = -1;
         s->tlb_write[i].vaddr = -1;
@@ -608,7 +567,7 @@ static void glue(riscv_cpu_flush_tlb_write_range_ram,
 {
     uint8_t *ptr, *ram_end;
     int i;
-    
+
     ram_end = ram_ptr + ram_size;
     for(i = 0; i < TLB_SIZE; i++) {
         if (s->tlb_write[i].vaddr != -1) {
@@ -627,11 +586,8 @@ static void glue(riscv_cpu_flush_tlb_write_range_ram,
                       MSTATUS_SPP | \
                       MSTATUS_FS | MSTATUS_XS | \
                       MSTATUS_SUM | MSTATUS_MXR)
-#if MAX_XLEN >= 64
-#define SSTATUS_MASK (SSTATUS_MASK0 | MSTATUS_UXL_MASK)
-#else
+
 #define SSTATUS_MASK SSTATUS_MASK0
-#endif
 
 
 #define MSTATUS_MASK (MSTATUS_UIE | MSTATUS_SIE | MSTATUS_MIE |      \
@@ -656,7 +612,7 @@ static target_ulong get_mstatus(RISCVCPUState *s, target_ulong mask)
         val |= (target_ulong)1 << (s->cur_xlen - 1);
     return val;
 }
-                              
+
 static int get_base_from_xlen(int xlen)
 {
     if (xlen == 32)
@@ -670,7 +626,7 @@ static int get_base_from_xlen(int xlen)
 static void set_mstatus(RISCVCPUState *s, target_ulong val)
 {
     target_ulong mod, mask;
-    
+
     /* flush the TLBs if change of MMU config */
     mod = s->mstatus ^ val;
     if ((mod & (MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR)) != 0 ||
@@ -680,17 +636,6 @@ static void set_mstatus(RISCVCPUState *s, target_ulong val)
     s->fs = (val >> MSTATUS_FS_SHIFT) & 3;
 
     mask = MSTATUS_MASK & ~MSTATUS_FS;
-#if MAX_XLEN >= 64
-    {
-        int uxl, sxl;
-        uxl = (val >> MSTATUS_UXL_SHIFT) & 3;
-        if (uxl >= 1 && uxl <= get_base_from_xlen(MAX_XLEN))
-            mask |= MSTATUS_UXL_MASK;
-        sxl = (val >> MSTATUS_UXL_SHIFT) & 3;
-        if (sxl >= 1 && sxl <= get_base_from_xlen(MAX_XLEN))
-            mask |= MSTATUS_SXL_MASK;
-    }
-#endif
     s->mstatus = (s->mstatus & ~mask) | (val & mask);
 }
 
@@ -705,7 +650,7 @@ static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
         return -1; /* read-only CSR */
     if (s->priv < ((csr >> 8) & 3))
         return -1; /* not enough priviledge */
-    
+
     switch(csr) {
 #if FLEN > 0
     case 0x001: /* fflags */
@@ -756,7 +701,7 @@ static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
         }
         val = s->insn_counter >> 32;
         break;
-        
+
     case 0x100:
         val = get_mstatus(s, SSTATUS_MASK);
         break;
@@ -950,26 +895,11 @@ static int csr_write(RISCVCPUState *s, uint32_t csr, target_ulong val)
 #endif
         tlb_flush_all(s);
         return 2;
-        
+
     case 0x300:
         set_mstatus(s, val);
         break;
     case 0x301: /* misa */
-#if MAX_XLEN >= 64
-        {
-            int new_mxl;
-            new_mxl = (val >> (s->cur_xlen - 2)) & 3;
-            if (new_mxl >= 1 && new_mxl <= get_base_from_xlen(MAX_XLEN)) {
-                /* Note: misa is only modified in M level, so cur_xlen
-                   = 2^(mxl + 4) */
-                if (s->mxl != new_mxl) {
-                    s->mxl = new_mxl;
-                    s->cur_xlen = 1 << (new_mxl + 4);
-                    return 1;
-                }
-            }
-        }
-#endif
         break;
     case 0x302:
         mask = (1 << (CAUSE_STORE_PAGE_FAULT + 1)) - 1;
@@ -1018,19 +948,6 @@ static void set_priv(RISCVCPUState *s, int priv)
 {
     if (s->priv != priv) {
         tlb_flush_all(s);
-#if MAX_XLEN >= 64
-        /* change the current xlen */
-        {
-            int mxl;
-            if (priv == PRV_S)
-                mxl = (s->mstatus >> MSTATUS_SXL_SHIFT) & 3;
-            else if (priv == PRV_U)
-                mxl = (s->mstatus >> MSTATUS_UXL_SHIFT) & 3;
-            else
-                mxl = s->mxl;
-            s->cur_xlen = 1 << (4 + mxl);
-        }
-#endif
         s->priv = priv;
     }
 }
@@ -1040,7 +957,7 @@ static void raise_exception2(RISCVCPUState *s, uint32_t cause,
 {
     BOOL deleg;
     target_ulong causel;
-    
+
 #if defined(DUMP_EXCEPTIONS) || defined(DUMP_MMU_EXCEPTIONS) || defined(DUMP_INTERRUPTS)
     {
         int flag;
@@ -1085,11 +1002,11 @@ static void raise_exception2(RISCVCPUState *s, uint32_t cause,
     } else {
         deleg = 0;
     }
-    
+
     causel = cause & 0x7fffffff;
     if (cause & CAUSE_INTERRUPT)
         causel |= (target_ulong)1 << (s->cur_xlen - 1);
-    
+
     if (deleg) {
         s->scause = causel;
         s->sepc = s->pc;
@@ -1197,7 +1114,7 @@ static inline int32_t sext(int32_t val, int n)
     return (val << (32 - n)) >> (32 - n);
 }
 
-static inline uint32_t get_field1(uint32_t val, int src_pos, 
+static inline uint32_t get_field1(uint32_t val, int src_pos,
                                   int dst_pos, int dst_pos_max)
 {
     int mask;
@@ -1212,21 +1129,8 @@ static inline uint32_t get_field1(uint32_t val, int src_pos,
 #define XLEN 32
 #include "riscv_cpu_template.h"
 
-#if MAX_XLEN >= 64
-#define XLEN 64
-#include "riscv_cpu_template.h"
-#endif
-
-#if MAX_XLEN >= 128
-#define XLEN 128
-#include "riscv_cpu_template.h"
-#endif
-
 static void glue(riscv_cpu_interp, MAX_XLEN)(RISCVCPUState *s, int n_cycles)
 {
-#ifdef USE_GLOBAL_STATE
-    s = &riscv_cpu_global_state;
-#endif
     uint64_t timeout;
 
     timeout = s->insn_counter + n_cycles;
@@ -1237,16 +1141,6 @@ static void glue(riscv_cpu_interp, MAX_XLEN)(RISCVCPUState *s, int n_cycles)
         case 32:
             riscv_cpu_interp_x32(s, n_cycles);
             break;
-#if MAX_XLEN >= 64
-        case 64:
-            riscv_cpu_interp_x64(s, n_cycles);
-            break;
-#endif
-#if MAX_XLEN >= 128
-        case 128:
-            riscv_cpu_interp_x128(s, n_cycles);
-            break;
-#endif
         default:
             abort();
         }
@@ -1285,12 +1179,9 @@ static BOOL glue(riscv_cpu_get_power_down, MAX_XLEN)(RISCVCPUState *s)
 static RISCVCPUState *glue(riscv_cpu_init, MAX_XLEN)(PhysMemoryMap *mem_map)
 {
     RISCVCPUState *s;
-    
-#ifdef USE_GLOBAL_STATE
-    s = &riscv_cpu_global_state;
-#else
+
     s = mallocz(sizeof(*s));
-#endif
+
     s->common.class_ptr = &glue(riscv_cpu_class, MAX_XLEN);
     s->mem_map = mem_map;
     s->pc = 0x1000;
@@ -1306,21 +1197,17 @@ static RISCVCPUState *glue(riscv_cpu_init, MAX_XLEN)(PhysMemoryMap *mem_map)
 #if FLEN >= 64
     s->misa |= MCPUID_D;
 #endif
-#if FLEN >= 128
-    s->misa |= MCPUID_Q;
-#endif
+
 #ifdef CONFIG_EXT_C
     s->misa |= MCPUID_C;
 #endif
+
     tlb_init(s);
     return s;
 }
 
 static void glue(riscv_cpu_end, MAX_XLEN)(RISCVCPUState *s)
 {
-#ifdef USE_GLOBAL_STATE
-    free(s);
-#endif
 }
 
 static uint32_t glue(riscv_cpu_get_misa, MAX_XLEN)(RISCVCPUState *s)

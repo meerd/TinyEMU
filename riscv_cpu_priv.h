@@ -1,6 +1,6 @@
 /*
  * RISCV CPU emulator private definitions
- * 
+ *
  * Copyright (c) 2016-2017 Fabrice Bellard
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -111,7 +111,7 @@ typedef uint128_t mem_uint_t;
 #define CAUSE_STORE_PAGE_FAULT    0xf
 
 /* Note: converted to correct bit position at runtime */
-#define CAUSE_INTERRUPT  ((uint32_t)1 << 31) 
+#define CAUSE_INTERRUPT  ((uint32_t)1 << 31)
 
 #define PRV_U 0
 #define PRV_S 1
@@ -171,33 +171,27 @@ typedef struct {
 
 struct RISCVCPUState {
     RISCVCPUCommonState common; /* must be first */
-    
+
     target_ulong pc;
     target_ulong reg[32];
 
-#ifdef USE_GLOBAL_VARIABLES
-    /* faster to use global variables with emscripten */
-    uint8_t *__code_ptr, *__code_end;
-    target_ulong __code_to_pc_addend;
-#endif
-    
 #if FLEN > 0
     fp_uint fp_reg[32];
     uint32_t fflags;
     uint8_t frm;
 #endif
-    
+
     uint8_t cur_xlen;  /* current XLEN value, <= MAX_XLEN */
     uint8_t priv; /* see PRV_x */
     uint8_t fs; /* MSTATUS_FS value */
     uint8_t mxl; /* MXL field in MISA register */
-    
+
     int32_t n_cycles; /* only used inside the CPU loop */
     uint64_t insn_counter;
     BOOL power_down_flag;
     int pending_exception; /* used during MMU exception handling */
     target_ulong pending_tval;
-    
+
     /* CSRs */
     target_ulong mstatus;
     target_ulong mtvec;
@@ -212,7 +206,7 @@ struct RISCVCPUState {
     uint32_t medeleg;
     uint32_t mideleg;
     uint32_t mcounteren;
-    
+
     target_ulong stvec;
     target_ulong sscratch;
     target_ulong sepc;

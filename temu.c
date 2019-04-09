@@ -430,9 +430,6 @@ int main(int argc, char **argv)
         switch(c) {
         case 0:
             switch(option_index) {
-            case 1: /* ctrlc */
-                allow_ctrlc = TRUE;
-                break;
             case 2: /* rw */
                 drive_mode = BF_MODE_RW;
                 break;
