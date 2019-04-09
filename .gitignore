@@ -4,3 +4,8 @@ splitimg
 
 *.d
 *.o
+
+*.config
+*.creator
+*.files
+*.includes
