@@ -9,3 +9,4 @@ splitimg
 *.creator
 *.files
 *.includes
+*.user
