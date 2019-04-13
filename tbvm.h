@@ -90,6 +90,7 @@ typedef union {
 typedef struct {
     os_type_t os_type;
     int memory_size;
+    int allow_ctrlc;
     loader_type_t loader_type;
     loader_info_t loader_info;
     const char *config_path;

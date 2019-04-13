@@ -411,6 +411,7 @@ void tbvm_get_default_init_arguments(tbvm_init_t *init_args)
 
             init_args->os_type     = OS_TYPE_LINUX;
             init_args->memory_size = 16; /* MB */
+            init_args->allow_ctrlc = 1; /* Allow CTRL + C */
             init_args->loader_type = LOADER_TYPE_DYNAMIC;
 
             init_args->loader_info.dinfo.os_linux.bios_path = tbvm_malloc(wd_len + 64);
@@ -444,8 +445,7 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
     int i;
     int result_code;
 
-    BOOL allow_ctrlc;
-    BlockDeviceModeEnum drive_mode;
+    BlockDeviceModeEnum drive_mode = BF_MODE_RW; /* Use disk in RW mode. Snapshot mode uses extra memory. */
     VirtMachineParams p_s, *p = &p_s;
 
     RETURN_ERROR(0 != init_args, TBVM_INVALID_INIT_ARGS);
@@ -466,14 +466,17 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
             fprintf(stdout, "Disk Image Path: %s\n", init_args->loader_info.dinfo.os_linux.disk_image_path);
             fprintf(stdout, "File Mount Tag: %s\n", init_args->loader_info.dinfo.os_linux.fs_mount_tag);
             fprintf(stdout, "File System Host Directory: %s\n", init_args->loader_info.dinfo.os_linux.fs_host_directory);
+        } else {
+            fprintf(stdout, "Static loader for linux is not supported at the moment.\n");
+            RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
         }
         fprintf(stdout, "******************************************************\n");
+    } else {
+        fprintf(stdout, "Baremetal is not supported at the moment.\n");
+        RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
     }
-#endif
 
-    allow_ctrlc = TRUE;
-    (void)allow_ctrlc;
-    drive_mode = BF_MODE_SNAPSHOT;
+#endif
 
     virt_machine_set_defaults(p);
 #ifndef JSON_PARSER
@@ -490,40 +493,28 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 
     /* open the files & devices */
     for(i = 0; i < p->drive_count; i++) {
-        BlockDevice *drive;
-        char *fname;
-        fname = get_file_path(p->cfg_filename, p->tab_drive[i].filename);
-        {
-            drive = block_device_init(fname, drive_mode);
-        }
-        free(fname);
+        BlockDevice *drive = block_device_init(p->tab_drive[i].filename, drive_mode);
         p->tab_drive[i].block_dev = drive;
     }
 
     for(i = 0; i < p->fs_count; i++) {
         FSDevice *fs;
-        const char *path;
-        path = p->tab_fs[i].filename;
-        {
-            char *fname;
-            fname = get_file_path(p->cfg_filename, path);
-            fs = fs_disk_init(fname);
-            if (!fs) {
-                /* fprintf(stderr, "%s: must be a directory\n", fname); */
-                free(fname);
-                RETURN_ERROR(fs != 0, TBVM_DISK_INIT_ERROR);
-            }
-            free(fname);
+        const char *path = p->tab_fs[i].filename;
+
+        fs = fs_disk_init(path);
+        if (!fs) {
+            /* fprintf(stderr, "%s: must be a directory\n", fname); */
+            RETURN_ERROR(fs != 0, TBVM_DISK_INIT_ERROR);
         }
+
         p->tab_fs[i].fs_dev = fs;
     }
 
-    p->console = console_init(allow_ctrlc);
+    p->console = console_init(init_args->allow_ctrlc);
     p->rtc_real_time = TRUE;
 
     s = virt_machine_init(p);
     virt_machine_free_config(p);
-
 
     RETURN_ERROR(0 != s, TBVM_MACHINE_INIT_ERROR);
     result_code = TBVM_SUCCESS;

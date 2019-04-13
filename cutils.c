@@ -40,6 +40,7 @@ void *tbvm_malloc(size_t size)
     if (!ptr)
         return NULL;
     memset(ptr, 0, size);
+
     return ptr;
 }
 
