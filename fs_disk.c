@@ -69,7 +69,7 @@ static void fs_delete(FSDevice *fs, FSFile *f)
 static FSFile *fid_create(FSDevice *s1, char *path, uint32_t uid)
 {
     FSFile *f;
-    f = mallocz(sizeof(*f));
+    f = tbvm_malloc(sizeof(*f));
     f->path = path;
     f->uid = uid;
     return f;
@@ -651,7 +651,7 @@ FSDevice *fs_disk_init(const char *root_path)
     if (!S_ISDIR(st.st_mode))
         return NULL;
 
-    fs = mallocz(sizeof(*fs));
+    fs = tbvm_malloc(sizeof(*fs));
 
     fs->common.fs_end = fs_disk_end;
     fs->common.fs_delete = fs_delete;

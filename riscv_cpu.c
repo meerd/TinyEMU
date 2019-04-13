@@ -1180,7 +1180,7 @@ static RISCVCPUState *glue(riscv_cpu_init, MAX_XLEN)(PhysMemoryMap *mem_map)
 {
     RISCVCPUState *s;
 
-    s = mallocz(sizeof(*s));
+    s = tbvm_malloc(sizeof(*s));
 
     s->common.class_ptr = &glue(riscv_cpu_class, MAX_XLEN);
     s->mem_map = mem_map;

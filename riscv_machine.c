@@ -261,7 +261,7 @@ typedef struct {
 static FDTState *fdt_init(void)
 {
     FDTState *s;
-    s = mallocz(sizeof(*s));
+    s = tbvm_malloc(sizeof(*s));
     return s;
 }
 
@@ -695,7 +695,7 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     /* Only riscv32 is supported */
     max_xlen = 32;
     
-    s = mallocz(sizeof(*s));
+    s = tbvm_malloc(sizeof(*s));
     s->common.vmc = p->vmc;
     s->ram_size = p->ram_size;
     s->max_xlen = max_xlen;

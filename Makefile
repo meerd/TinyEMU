@@ -29,6 +29,8 @@ CROSS_PREFIX=
 
 CC       = $(CROSS_PREFIX)gcc
 STRIP    = $(CROSS_PREFIX)strip
+AR       = $(CROSS_PREFIX)ar
+
 CFLAGS   = -Os -Wall -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
 ifeq ($(DEBUG),1)
 CFLAGS   = -ggdb3
@@ -36,37 +38,84 @@ endif
 CFLAGS  += -D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
 LDFLAGS  =
 
+LIBS     = -lrt
 # ########### Sources & Libraries -----------------------------
 
 WORKING_DIRECTORY := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+BUILT_SHARED_FLAG  = $(BUILD_DIR)/.built_shared
+BUILT_STATIC_FLAG  = $(BUILD_DIR)/.built_static
 
-DEST_DIR  = /usr/local/bin
+ifeq ($(SHARED),1)
+CFLAGS   += -fPIC
+DEST_DIR ?= /usr/local/lib
+LDFLAGS   = -shared
+OUTPUT    = libtbvm.so
+else ifeq ($(STATIC), 1)
+DEST_DIR ?= /usr/local/lib
+OUTPUT    = libtbvm.a
+else
+DEST_DIR  ?= /usr/local/bin
+OUTPUT    = tbvm
+LIBS      = -ltbvm
+LDFLAGS   = -L/usr/local/lib -L/usr/lib 
+ifeq ($(DEBUG),1)
+LDFLAGS  += -L$(WORKING_DIRECTORY)/build
+endif
+endif
+
 BUILD_DIR = $(WORKING_DIRECTORY)build
 INSTALL   = install
-APPS      = tbvm
 
 CFLAGS   += -DCONFIG_RISCV_MAX_XLEN=32
-EMU_OBJS := virtio.o cutils.o iomem.o fs_disk.o json.o machine.o temu.o riscv_machine.o softfp.o riscv_cpu32.o 
-EMU_OBJS := $(addprefix $(BUILD_DIR)/, $(EMU_OBJS))
 
-EMU_LIBS = -lrt
+ifneq ($(OUTPUT), tbvm)
+OBJS     := virtio.o cutils.o iomem.o fs_disk.o machine.o tbvm.o riscv_machine.o softfp.o riscv_cpu32.o 
+else
+OBJS     := main.o
+endif
+
+OBJS     := $(addprefix $(BUILD_DIR)/, $(OBJS))
 
 .PHONY: run prepare
 
-all: prepare $(APPS)
+all: prepare $(OUTPUT)
+ifneq ($(DEBUG),1)
+	$(STRIP) $(BUILD_DIR)/$(OUTPUT)	
+endif
 
 prepare:
 	mkdir -p $(BUILD_DIR)
+ifeq ($(SHARED),1)
+ifneq ("$(wildcard $(BUILT_STATIC_FLAG))","")
+#Already built for static library. Rebuild required.
+	$(info Cleaning up obsolete static library objects...)
+	$(MAKE) clean
+endif
+else ifeq ($(STATIC), 1)
+ifneq ("$(wildcard $(BUILT_SHARED_FLAG))","")
+#Already built for shared library. Rebuild required.
+	$(info Cleaning up obsolete shared library objects...)
+	$(MAKE) clean
+endif
+endif
 
-tbvm: $(EMU_OBJS)
-	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $^ $(EMU_LIBS)
+
+$(OUTPUT): $(OBJS)
+ifneq ($(STATIC), 1)
+	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $^ $(LIBS)
+ifeq ($(SHARED), 1)
+	touch $(BUILT_SHARED_FLAG)
+endif
+else
+	$(AR) rcs $(BUILD_DIR)/$@ $^
+	touch $(BUILT_STATIC_FLAG)
+endif
 
 $(BUILD_DIR)/riscv_cpu32.o: riscv_cpu.c
 	$(CC) $(CFLAGS) -DMAX_XLEN=32 -c -o $@ $<
 
-install: $(APPS)
-	$(STRIP) $(PROGS)
-	$(INSTALL) -m755 $(APPS) "$(DEST_DIR)"
+install: 
+	$(INSTALL) -m755 $(BUILD_DIR)/$(OUTPUT) "$(DEST_DIR)"
 
 $(BUILD_DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -75,6 +124,6 @@ clean:
 	rm -f $(BUILD_DIR)/*
 
 run: all
-	$(BUILD_DIR)/$(APPS) $(WORKING_DIRECTORY)/demo/profiles/default.prd
+	LD_LIBRARY_PATH=$(BUILD_DIR) $(BUILD_DIR)/tbvm $(WORKING_DIRECTORY)/demo/profiles/default.prd
 
 -include $(wildcard *.d)

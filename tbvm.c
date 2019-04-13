@@ -1,7 +1,8 @@
 /*
- * TinyEMU
- * 
- * Copyright (c) 2016-2018 Fabrice Bellard
+ * TBVM initialization interface
+ *
+ * Copyright (c) 2016 Fabrice Bellard
+ * Copyright (c) 2019 Erdem Meydanli
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -45,6 +47,11 @@
 #include "iomem.h"
 #include "virtio.h"
 #include "machine.h"
+#include "tbvm.h"
+
+#define TBVM_MAJOR_VERSION      0
+#define TBVM_MINOR_VERSION      1
+#define TBVM_PATCH_VERSION      0
 
 typedef struct {
     int stdin_fd;
@@ -55,6 +62,8 @@ typedef struct {
 static struct termios oldtty;
 static int old_fd0_flags;
 static STDIODevice *global_stdio_device;
+
+static char version_info[12] = { 0 };
 
 static void term_exit(void)
 {
@@ -173,8 +182,8 @@ CharacterDevice *console_init(BOOL allow_ctrlc)
 
     term_init(allow_ctrlc);
 
-    dev = mallocz(sizeof(*dev));
-    s = mallocz(sizeof(*s));
+    dev = tbvm_malloc(sizeof(*dev));
+    s = tbvm_malloc(sizeof(*s));
     s->stdin_fd = 0;
     /* Note: the glibc does not properly tests the return value of
        write() in printf, so some messages on stdout may be lost */
@@ -319,15 +328,15 @@ static BlockDevice *block_device_init(const char *filename,
     fseek(f, 0, SEEK_END);
     file_size = ftello(f);
 
-    bs = mallocz(sizeof(*bs));
-    bf = mallocz(sizeof(*bf));
+    bs = tbvm_malloc(sizeof(*bs));
+    bf = tbvm_malloc(sizeof(*bf));
 
     bf->mode = mode;
     bf->nb_sectors = file_size / 512;
     bf->f = f;
 
     if (mode == BF_MODE_SNAPSHOT) {
-        bf->sector_table = mallocz(sizeof(bf->sector_table[0]) *
+        bf->sector_table = tbvm_malloc(sizeof(bf->sector_table[0]) *
                                    bf->nb_sectors);
     }
     
@@ -341,7 +350,7 @@ static BlockDevice *block_device_init(const char *filename,
 #define MAX_EXEC_CYCLE 500000
 #define MAX_SLEEP_TIME 10 /* in ms */
 
-void virt_machine_run(VirtMachine *m)
+static void virt_machine_run(VirtMachine *m)
 {
     fd_set rfds, wfds, efds;
     int fd_max, ret, delay;
@@ -392,78 +401,91 @@ void virt_machine_run(VirtMachine *m)
 
 /*******************************************************/
 
-static struct option options[] = {
-    { "help", no_argument, NULL, 'h' },
-    { "ctrlc", no_argument },
-    { "rw", no_argument },
-    { "ro", no_argument },
-    { "append", required_argument },
-    { "no-accel", no_argument },
-    { NULL },
-};
-
-void help(void)
+void tbvm_get_default_init_arguments(tbvm_init_t *init_args)
 {
-    printf("Copyright (c) 2016-2018 Fabrice Bellard\n"
-           "usage: riscvemu [options] config_file\n"
-           );
-    exit(1);
+    if (init_args) {
+        const char *wd = getcwd(0, 0);
+
+        if (wd) {
+            int wd_len = strlen(wd);
+
+            init_args->os_type     = OS_TYPE_LINUX;
+            init_args->memory_size = 16; /* MB */
+            init_args->loader_type = LOADER_TYPE_DYNAMIC;
+
+            init_args->loader_info.dinfo.os_linux.bios_path = tbvm_malloc(wd_len + 64);
+            strcpy((char *) init_args->loader_info.dinfo.os_linux.bios_path, wd);
+            strcat((char *) init_args->loader_info.dinfo.os_linux.bios_path, "/demo/binaries/bbl32.bin");
+
+            init_args->loader_info.dinfo.os_linux.kernel_path = tbvm_malloc(wd_len + 64);
+            strcpy((char *) init_args->loader_info.dinfo.os_linux.kernel_path, wd);
+            strcat((char *) init_args->loader_info.dinfo.os_linux.kernel_path, "/demo/binaries/kernel-riscv32-custom.bin");
+
+            init_args->loader_info.dinfo.os_linux.disk_image_path = tbvm_malloc(wd_len + 64);
+            strcpy((char *) init_args->loader_info.dinfo.os_linux.disk_image_path, wd);
+            strcat((char *) init_args->loader_info.dinfo.os_linux.disk_image_path, "/demo/binaries/rootfs.ext2");
+
+            init_args->loader_info.dinfo.os_linux.cmdline = strdup("console=hvc0 root=/dev/vda rw");
+            init_args->loader_info.dinfo.os_linux.fs_mount_tag = strdup("/dev/root");
+            init_args->loader_info.dinfo.os_linux.fs_host_directory = strdup("/tmp");
+
+            init_args->config_path = "/home/pundev/git/TinyEMU/demo/profiles/default.prd";
+            free((void *) wd);
+            return;
+        }
+
+        fprintf(stderr, "Error while loading default init arguments...");
+    }
 }
 
-int main(int argc, char **argv)
+tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 {
-    VirtMachine *s;
-    const char *path;
-    int c, option_index, i, ram_size;
+    VirtMachine *s = 0;
+    int i;
+    int result_code;
+
     BOOL allow_ctrlc;
     BlockDeviceModeEnum drive_mode;
     VirtMachineParams p_s, *p = &p_s;
 
-    ram_size = -1;
+    RETURN_ERROR(0 != init_args, TBVM_INVALID_INIT_ARGS);
+
+#if 1
+    if (OS_TYPE_LINUX == init_args->os_type) {
+        fprintf(stdout, "******************************************************\n");
+        fprintf(stdout, "Operating System: Linux\n");
+        fprintf(stdout, "Memory Size: %d\n", init_args->memory_size);
+
+        if (LOADER_TYPE_DYNAMIC == init_args->loader_type) {
+            fprintf(stdout, "Loader Type: Dynamic\n");
+            fprintf(stdout, "Bios Path: %s\n\n", init_args->loader_info.dinfo.os_linux.bios_path);
+
+            fprintf(stdout, "Kernel Path: %s\n", init_args->loader_info.dinfo.os_linux.kernel_path);
+            fprintf(stdout, "Kernel Command Line: %s\n\n", init_args->loader_info.dinfo.os_linux.cmdline);
+
+            fprintf(stdout, "Disk Image Path: %s\n", init_args->loader_info.dinfo.os_linux.disk_image_path);
+            fprintf(stdout, "File Mount Tag: %s\n", init_args->loader_info.dinfo.os_linux.fs_mount_tag);
+            fprintf(stdout, "File System Host Directory: %s\n", init_args->loader_info.dinfo.os_linux.fs_host_directory);
+        }
+        fprintf(stdout, "******************************************************\n");
+    }
+#endif
+
     allow_ctrlc = TRUE;
     (void)allow_ctrlc;
     drive_mode = BF_MODE_SNAPSHOT;
-    for(;;) {
-        c = getopt_long_only(argc, argv, "hm:", options, &option_index);
-        if (c == -1)
-            break;
-        switch(c) {
-        case 0:
-            switch(option_index) {
-            case 2: /* rw */
-                drive_mode = BF_MODE_RW;
-                break;
-            case 3: /* ro */
-                drive_mode = BF_MODE_RO;
-                break;
-            default:
-                fprintf(stderr, "unknown option index: %d\n", option_index);
-                exit(1);
-            }
-            break;
-        case 'h':
-            help();
-            break;
-        case 'm':
-            ram_size = strtoul(optarg, NULL, 0);
-            break;
-        default:
-            exit(1);
-        }
-    }
 
-    if (optind >= argc) {
-        help();
-    }
-
-    path = argv[optind++];
     virt_machine_set_defaults(p);
-    virt_machine_load_config_file(p, path, NULL, NULL);
+#ifndef JSON_PARSER
+    virt_machine_set_config(p, init_args);
+#else
+    virt_machine_load_config_file(p, init_args->config_path, NULL, NULL);
+#endif
 
     /* override some config parameters */
 
-    if (ram_size > 0) {
-        p->ram_size = (uint64_t)ram_size << 20;
+    if (init_args->memory_size > 0) {
+        p->ram_size = (uint64_t)init_args->memory_size << 20;
     }
 
     /* open the files & devices */
@@ -482,14 +504,14 @@ int main(int argc, char **argv)
         FSDevice *fs;
         const char *path;
         path = p->tab_fs[i].filename;
-
         {
             char *fname;
             fname = get_file_path(p->cfg_filename, path);
             fs = fs_disk_init(fname);
             if (!fs) {
-                fprintf(stderr, "%s: must be a directory\n", fname);
-                exit(1);
+                /* fprintf(stderr, "%s: must be a directory\n", fname); */
+                free(fname);
+                RETURN_ERROR(fs != 0, TBVM_DISK_INIT_ERROR);
             }
             free(fname);
         }
@@ -500,14 +522,62 @@ int main(int argc, char **argv)
     p->rtc_real_time = TRUE;
 
     s = virt_machine_init(p);
-    if (!s)
-        exit(1);
-    
     virt_machine_free_config(p);
-    
-    for(;;) {
-        virt_machine_run(s);
+
+
+    RETURN_ERROR(0 != s, TBVM_MACHINE_INIT_ERROR);
+    result_code = TBVM_SUCCESS;
+
+on_exit:
+    if (err) {
+        *err = result_code;
     }
-    virt_machine_end(s);
-    return 0;
+
+    return (tbvm_context_t) s;
+}
+
+void tbvm_event_loop(tbvm_context_t ctx)
+{
+    if (ctx) {
+        virt_machine_run((VirtMachine *) ctx);
+    }
+}
+
+void tbvm_run(tbvm_context_t ctx, volatile int *state, int msec_delay)
+{
+    /* If state is not NULL, then set its initial value to running. */
+    if (state) {
+        *state = TBVM_STATE_RUN; /* running */
+    }
+
+    if (ctx) {
+        for (;;) {
+            tbvm_event_loop(ctx);
+            if (msec_delay) tbvm_sleep(msec_delay);
+
+            if (state && TBVM_STATE_STOP == *state) {
+                fprintf(stdout, "Terminating TBVM...");
+                return;
+            }
+        }
+    }
+}
+
+void tbvm_uninit(tbvm_context_t ctx)
+{
+    virt_machine_end((VirtMachine *) ctx);
+}
+
+const char *tbvm_get_version_info()
+{
+    if (version_info[0] == 0) {
+        sprintf(version_info, "%u.%u.%u", TBVM_MAJOR_VERSION, TBVM_MINOR_VERSION, TBVM_PATCH_VERSION);
+    }
+
+    return version_info;
+}
+
+const char *tbvm_get_build_info()
+{
+    return __TIME__ " " __DATE__;
 }

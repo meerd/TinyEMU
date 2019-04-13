@@ -21,7 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "json.h"
+
+#include "tbvm.h" /* TODO: REMOVE */
 
 #define MAX_DRIVE_DEVICE 4
 #define MAX_FS_DEVICE 4
@@ -95,14 +96,21 @@ struct VirtMachineClass {
 extern const VirtMachineClass riscv_machine_class;
 
 void __attribute__((format(printf, 1, 2))) vm_error(const char *fmt, ...);
+#ifdef JSON_PARSER
 int vm_get_int(JSONValue obj, const char *name, int *pval);
 int vm_get_int_opt(JSONValue obj, const char *name, int *pval, int def_val);
-
+#endif
 void virt_machine_set_defaults(VirtMachineParams *p);
+
+#ifdef JSON_PARSER
 void virt_machine_load_config_file(VirtMachineParams *p,
                                    const char *filename,
                                    void (*start_cb)(void *opaque),
                                    void *opaque);
+#else
+void virt_machine_set_config(VirtMachineParams *p, const tbvm_init_t *init_args);
+#endif
+
 void vm_add_cmdline(VirtMachineParams *p, const char *cmdline);
 char *get_file_path(const char *base_filename, const char *filename);
 void virt_machine_free_config(VirtMachineParams *p);

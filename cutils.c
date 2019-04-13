@@ -29,10 +29,11 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #include "cutils.h"
 
-void *mallocz(size_t size)
+void *tbvm_malloc(size_t size)
 {
     void *ptr;
     ptr = malloc(size);
@@ -42,6 +43,12 @@ void *mallocz(size_t size)
     return ptr;
 }
 
+void tbvm_sleep(unsigned int msec)
+{
+    usleep(msec * 1000);
+}
+
+#ifdef JSON_PARSER
 void dbuf_init(DynBuf *s)
 {
     memset(s, 0, sizeof(*s));
@@ -76,3 +83,4 @@ void dbuf_free(DynBuf *s)
     free(s->buf);
     memset(s, 0, sizeof(*s));
 }
+#endif

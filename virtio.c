@@ -822,7 +822,7 @@ VIRTIODevice *virtio_block_init(VIRTIOBusDef *bus, BlockDevice *bs)
     VIRTIOBlockDevice *s;
     uint64_t nb_sectors;
 
-    s = mallocz(sizeof(*s));
+    s = tbvm_malloc(sizeof(*s));
     virtio_init(&s->common, bus,
                 2, 8, virtio_block_recv_request);
     s->bs = bs;
@@ -926,7 +926,7 @@ VIRTIODevice *virtio_console_init(VIRTIOBusDef *bus, CharacterDevice *cs)
 {
     VIRTIOConsoleDevice *s;
 
-    s = mallocz(sizeof(*s));
+    s = tbvm_malloc(sizeof(*s));
     virtio_init(&s->common, bus,
                 3, 4, virtio_console_recv_request);
     s->common.device_features = (1 << 0); /* VIRTIO_CONSOLE_F_SIZE */
@@ -1804,7 +1804,7 @@ static int virtio_9p_recv_request(VIRTIODevice *s1, int queue_idx,
             f = fid_find(s, fid);
             if (!f)
                 goto fid_not_found;
-            names = mallocz(sizeof(names[0]) * nwname);
+            names = tbvm_malloc(sizeof(names[0]) * nwname);
             qids = malloc(sizeof(qids[0]) * nwname);
             for(i = 0; i < nwname; i++) {
                 if (unmarshall(s, queue_idx, desc_idx, &offset, 
@@ -1923,7 +1923,7 @@ VIRTIODevice *virtio_9p_init(VIRTIOBusDef *bus, FSDevice *fs,
     uint8_t *cfg;
 
     len = strlen(mount_tag);
-    s = mallocz(sizeof(*s));
+    s = tbvm_malloc(sizeof(*s));
     virtio_init(&s->common, bus,
                 9, 2 + len, virtio_9p_recv_request);
     s->common.device_features = 1 << 0;

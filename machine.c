@@ -36,6 +36,7 @@
 #include "iomem.h"
 #include "virtio.h"
 #include "machine.h"
+#include "tbvm.h"
 
 void __attribute__((format(printf, 1, 2))) vm_error(const char *fmt, ...)
 {
@@ -45,6 +46,7 @@ void __attribute__((format(printf, 1, 2))) vm_error(const char *fmt, ...)
     va_end(ap);
 }
 
+#ifdef JSON_PARSER
 int vm_get_int(JSONValue obj, const char *name, int *pval)
 { 
     JSONValue val;
@@ -162,7 +164,9 @@ static char *cmdline_subst(const char *cmdline)
     dbuf_putc(&dbuf, 0);
     return (char *)dbuf.buf;
 }
+#endif
 
+#ifdef JSON_PARSER
 static int virt_machine_parse_config(VirtMachineParams *p,
                                      char *config_file_str, int len)
 {
@@ -268,6 +272,7 @@ static int virt_machine_parse_config(VirtMachineParams *p,
     json_free(cfg);
     return -1;
 }
+#endif
 
 typedef void FSLoadFileCB(void *opaque, uint8_t *buf, int buf_len);
 
@@ -281,7 +286,10 @@ typedef struct {
     int file_index;
 } VMConfigLoadState;
 
+
+#ifdef JSON_PARSER
 static void config_file_loaded(void *opaque, uint8_t *buf, int buf_len);
+#endif
 static void config_additional_file_load(VMConfigLoadState *s);
 static void config_additional_file_load_cb(void *opaque,
                                            uint8_t *buf, int buf_len);
@@ -339,22 +347,57 @@ static int load_file(uint8_t **pbuf, const char *filename)
 static void config_load_file(VMConfigLoadState *s, const char *filename,
                              FSLoadFileCB *cb, void *opaque)
 {
-    {
-        uint8_t *buf;
-        int size;
-        size = load_file(&buf, filename);
-        cb(opaque, buf, size);
-        free(buf);
-    }
+    uint8_t *buf;
+    int size;
+    size = load_file(&buf, filename);
+    cb(opaque, buf, size);
+    free(buf);
 }
 
+void virt_machine_set_config(VirtMachineParams *p, const tbvm_init_t *init_args)
+{
+    VMConfigLoadState *s;
+    const char *filename = init_args->config_path;
+
+    s = tbvm_malloc(sizeof(*s));
+    s->vm_params = p;
+    s->start_cb = 0;
+    s->opaque = 0;
+    p->cfg_filename = strdup(filename);
+
+    /* VM Version : 1       */
+    /* Machine    : riscv32 */
+    p->machine_name = "riscv32";
+    p->vmc = &riscv_machine_class;
+    p->vmc->virt_machine_set_defaults(p);
+
+
+    if (OS_TYPE_LINUX == init_args->os_type) {
+        p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_linux.bios_path;
+        p->files[VM_FILE_KERNEL].filename = (char *) init_args->loader_info.dinfo.os_linux.kernel_path;
+        p->cmdline = (char *) init_args->loader_info.dinfo.os_linux.cmdline;
+        /* TODO: Add multiple disk support back */
+        p->tab_drive[0].filename = (char *) init_args->loader_info.dinfo.os_linux.disk_image_path;
+        p->drive_count = 1;
+        p->tab_fs[0].tag = (char *) init_args->loader_info.dinfo.os_linux.fs_mount_tag;
+        p->tab_fs[0].filename = (char *) init_args->loader_info.dinfo.os_linux.fs_host_directory;
+        p->fs_count = 1;
+    } else {
+        p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_baremetal.binary_path;
+    }
+
+    s->file_index = 0;
+    config_additional_file_load(s);
+}
+
+#ifdef JSON_PARSER
 void virt_machine_load_config_file(VirtMachineParams *p,
                                    const char *filename,
                                    void (*start_cb)(void *opaque),
                                    void *opaque)
 {
     VMConfigLoadState *s;
-    
+
     s = mallocz(sizeof(*s));
     s->vm_params = p;
     s->start_cb = start_cb;
@@ -371,11 +414,12 @@ static void config_file_loaded(void *opaque, uint8_t *buf, int buf_len)
 
     if (virt_machine_parse_config(p, (char *)buf, buf_len) < 0)
         exit(1);
-    
+
     /* load the additional files */
     s->file_index = 0;
     config_additional_file_load(s);
 }
+#endif
 
 static void config_additional_file_load(VMConfigLoadState *s)
 {

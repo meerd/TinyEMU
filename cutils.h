@@ -50,6 +50,8 @@
 #undef FALSE
 #undef TRUE
 
+#define RETURN_ERROR(expression, code) do { if (!(expression)) { result_code = code; goto on_exit; } } while (0)
+
 typedef int BOOL;
 enum {
     FALSE = 0,
@@ -72,8 +74,6 @@ static inline int min_int(int a, int b)
     else
         return b;
 }
-
-void *mallocz(size_t size);
 
 static inline uint16_t get_le16(const uint8_t *ptr)
 {
@@ -154,9 +154,10 @@ static inline int ctz32(uint32_t a)
     return 32;
 }
 
+void *tbvm_malloc(size_t size);
+void tbvm_sleep(unsigned int msec);
 
-void *mallocz(size_t size);
-
+#ifdef JSON_PARSER
 typedef struct {
     uint8_t *buf;
     size_t size;
@@ -168,5 +169,6 @@ void dbuf_write(DynBuf *s, size_t offset, const uint8_t *data, size_t len);
 void dbuf_putc(DynBuf *s, uint8_t c);
 void dbuf_putstr(DynBuf *s, const char *str);
 void dbuf_free(DynBuf *s);
+#endif
 
 #endif /* CUTILS_H */
