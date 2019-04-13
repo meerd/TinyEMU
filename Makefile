@@ -31,11 +31,11 @@ CC       = $(CROSS_PREFIX)gcc
 STRIP    = $(CROSS_PREFIX)strip
 AR       = $(CROSS_PREFIX)ar
 
-CFLAGS   = -Os -Wall -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
+CFLAGS   = -Wall -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
 ifeq ($(DEBUG),1)
-CFLAGS   = -ggdb3 
+CFLAGS   += -ggdb3 
 else
-CFLAGS   = -DDISABLE_CONSOLE
+CFLAGS   += -Os -DDISABLE_CONSOLE
 endif
 CFLAGS  += -D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
 LDFLAGS  =
@@ -83,7 +83,7 @@ OBJS     := $(addprefix $(BUILD_DIR)/, $(OBJS))
 
 all: prepare $(OUTPUT)
 ifneq ($(DEBUG),1)
-	$(STRIP) $(BUILD_DIR)/$(OUTPUT)	
+	$(STRIP) $(BUILD_DIR)/$(OUTPUT)
 endif
 
 dev:
