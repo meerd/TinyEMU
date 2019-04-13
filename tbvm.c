@@ -59,11 +59,12 @@ typedef struct {
     BOOL resize_pending;
 } STDIODevice;
 
+static char version_info[12] = { 0 };
+
+#ifndef DISABLE_CONSOLE
 static struct termios oldtty;
 static int old_fd0_flags;
 static STDIODevice *global_stdio_device;
-
-static char version_info[12] = { 0 };
 
 static void term_exit(void)
 {
@@ -203,6 +204,7 @@ CharacterDevice *console_init(BOOL allow_ctrlc)
     dev->read_data = console_read;
     return dev;
 }
+#endif
 
 typedef enum {
     BF_MODE_RO,
@@ -353,18 +355,21 @@ static BlockDevice *block_device_init(const char *filename,
 static void virt_machine_run(VirtMachine *m)
 {
     fd_set rfds, wfds, efds;
-    int fd_max, ret, delay;
+    int fd_max, delay, ret;
     struct timeval tv;
+#ifndef DISABLE_CONSOLE
     int stdin_fd;
-    
+#endif
+
     delay = virt_machine_get_sleep_duration(m, MAX_SLEEP_TIME);
-    
+
     /* wait for an event */
     FD_ZERO(&rfds);
     FD_ZERO(&wfds);
     FD_ZERO(&efds);
     fd_max = -1;
 
+#ifndef DISABLE_CONSOLE
     if (m->console_dev && virtio_console_can_write_data(m->console_dev)) {
         STDIODevice *s = m->console->opaque;
         stdin_fd = s->stdin_fd;
@@ -378,11 +383,13 @@ static void virt_machine_run(VirtMachine *m)
             s->resize_pending = FALSE;
         }
     }
+#endif
 
     tv.tv_sec = delay / 1000;
     tv.tv_usec = (delay % 1000) * 1000;
     ret = select(fd_max + 1, &rfds, &wfds, &efds, &tv);
 
+#ifndef DISABLE_CONSOLE
     if (ret > 0) {
         if (m->console_dev && FD_ISSET(stdin_fd, &rfds)) {
             uint8_t buf[128];
@@ -395,7 +402,10 @@ static void virt_machine_run(VirtMachine *m)
             }
         }
     }
-    
+#else
+    (void) ret;
+#endif
+
     virt_machine_interp(m, MAX_EXEC_CYCLE);
 }
 
@@ -510,7 +520,10 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
         p->tab_fs[i].fs_dev = fs;
     }
 
+#ifndef DISABLE_CONSOLE
     p->console = console_init(init_args->allow_ctrlc);
+#endif
+
     p->rtc_real_time = TRUE;
 
     s = virt_machine_init(p);

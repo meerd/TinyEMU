@@ -728,13 +728,16 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
         irq_init(&s->plic_irq[i], plic_set_irq, s, i);
     }
 
+#ifndef DISABLE_CONSOLE
     s->common.console = p->console;
+#endif
 
     memset(vbus, 0, sizeof(*vbus));
     vbus->mem_map = s->mem_map;
     vbus->addr = VIRTIO_BASE_ADDR;
     irq_num = VIRTIO_IRQ;
     
+#ifndef DISABLE_CONSOLE
     /* virtio console */
     if (p->console) {
         vbus->irq = &s->plic_irq[irq_num];
@@ -743,6 +746,7 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
         irq_num++;
         s->virtio_count++;
     }
+#endif
 
     /* virtio block device */
     for(i = 0; i < p->drive_count; i++) {

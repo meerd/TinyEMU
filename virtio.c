@@ -673,13 +673,14 @@ void virtio_set_debug(VIRTIODevice *s, int debug)
     s->debug = debug;
 }
 
+#ifndef DISABLE_CONSOLE
 static void virtio_config_change_notify(VIRTIODevice *s)
 {
     /* INT_CONFIG interrupt */
     s->int_status |= 2;
     set_irq(s->irq, 1);
 }
-
+#endif
 /*********************************************************************/
 /* block device */
 
@@ -837,6 +838,7 @@ VIRTIODevice *virtio_block_init(VIRTIOBusDef *bus, BlockDevice *bs)
 /*********************************************************************/
 /* console device */
 
+#ifndef DISABLE_CONSOLE
 typedef struct VIRTIOConsoleDevice {
     VIRTIODevice common;
     CharacterDevice *cs;
@@ -935,6 +937,7 @@ VIRTIODevice *virtio_console_init(VIRTIOBusDef *bus, CharacterDevice *cs)
     s->cs = cs;
     return (VIRTIODevice *)s;
 }
+#endif
 
 /*********************************************************************/
 /* 9p filesystem device */

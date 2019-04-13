@@ -79,8 +79,10 @@ typedef struct {
 typedef struct VirtMachine {
     const VirtMachineClass *vmc;
     /* console */
+#ifndef DISABLE_CONSOLE
     VIRTIODevice *console_dev;
     CharacterDevice *console;
+#endif
 } VirtMachine;
 
 

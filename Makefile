@@ -33,7 +33,9 @@ AR       = $(CROSS_PREFIX)ar
 
 CFLAGS   = -Os -Wall -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
 ifeq ($(DEBUG),1)
-CFLAGS   = -ggdb3
+CFLAGS   = -ggdb3 
+else
+CFLAGS   = -DDISABLE_CONSOLE
 endif
 CFLAGS  += -D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
 LDFLAGS  =
@@ -76,12 +78,17 @@ endif
 
 OBJS     := $(addprefix $(BUILD_DIR)/, $(OBJS))
 
-.PHONY: run prepare
+.PHONY: run prepare dev
+
 
 all: prepare $(OUTPUT)
 ifneq ($(DEBUG),1)
 	$(STRIP) $(BUILD_DIR)/$(OUTPUT)	
 endif
+
+dev:
+	$(MAKE) -C $(WORKING_DIRECTORY) SHARED=1 DEBUG=1
+	$(MAKE) -C $(WORKING_DIRECTORY) DEBUG=1 run
 
 prepare:
 	mkdir -p $(BUILD_DIR)
