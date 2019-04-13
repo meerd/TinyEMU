@@ -1,7 +1,8 @@
 #
-# TinyEMU
+# TBVM (A fork of TinyEMU)
 # 
 # Copyright (c) 2016-2018 Fabrice Bellard
+# Copyright (c) 2019 Erdem Meydanli
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,46 +23,58 @@
 # THE SOFTWARE.
 #
 
+# ########### Toolchain -----------------------------
+
 CROSS_PREFIX=
 
-CC=$(CROSS_PREFIX)gcc
-STRIP=$(CROSS_PREFIX)strip
-CFLAGS=-Os -Wall -g -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
-CFLAGS+=-D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
-LDFLAGS=
+CC       = $(CROSS_PREFIX)gcc
+STRIP    = $(CROSS_PREFIX)strip
+CFLAGS   = -Os -Wall -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
+ifeq ($(DEBUG),1)
+CFLAGS   = -ggdb3
+endif
+CFLAGS  += -D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
+LDFLAGS  =
 
-bindir=/usr/local/bin
-INSTALL=install
-PROGS+= temu
+# ########### Sources & Libraries -----------------------------
 
-all: $(PROGS)
+WORKING_DIRECTORY := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 
-EMU_OBJS:=virtio.o cutils.o iomem.o fs_disk.o json.o machine.o temu.o riscv_machine.o softfp.o riscv_cpu32.o 
-CFLAGS+=-DCONFIG_RISCV_MAX_XLEN=32
+DEST_DIR  = /usr/local/bin
+BUILD_DIR = $(WORKING_DIRECTORY)build
+INSTALL   = install
+APPS      = tbvm
 
-EMU_LIBS=-lrt
+CFLAGS   += -DCONFIG_RISCV_MAX_XLEN=32
+EMU_OBJS := virtio.o cutils.o iomem.o fs_disk.o json.o machine.o temu.o riscv_machine.o softfp.o riscv_cpu32.o 
+EMU_OBJS := $(addprefix $(BUILD_DIR)/, $(EMU_OBJS))
 
-.PHONY: run
+EMU_LIBS = -lrt
 
-WORKING_DIRECTORY:=$(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+.PHONY: run prepare
 
-temu$(EXE): $(EMU_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(EMU_LIBS)
+all: prepare $(APPS)
 
-riscv_cpu32.o: riscv_cpu.c
+prepare:
+	mkdir -p $(BUILD_DIR)
+
+tbvm: $(EMU_OBJS)
+	$(CC) $(LDFLAGS) -o $(BUILD_DIR)/$@ $^ $(EMU_LIBS)
+
+$(BUILD_DIR)/riscv_cpu32.o: riscv_cpu.c
 	$(CC) $(CFLAGS) -DMAX_XLEN=32 -c -o $@ $<
 
-install: $(PROGS)
+install: $(APPS)
 	$(STRIP) $(PROGS)
-	$(INSTALL) -m755 $(PROGS) "$(DESTDIR)$(bindir)"
+	$(INSTALL) -m755 $(APPS) "$(DEST_DIR)"
 
-%.o: %.c
+$(BUILD_DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f *.o *.d *~ $(PROGS) 
+	rm -f $(BUILD_DIR)/*
 
-run:
-	(cd ${WORKING_DIRECTORY} && ./temu ./demo/configs/default.cfg)
+run: all
+	$(BUILD_DIR)/$(APPS) $(WORKING_DIRECTORY)/demo/profiles/default.prd
 
 -include $(wildcard *.d)
