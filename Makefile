@@ -70,6 +70,10 @@ INSTALL   = install
 
 CFLAGS   += -DCONFIG_RISCV_MAX_XLEN=32
 
+ifeq ($(DEBUG),1)
+CFLAGS   += -DDEBUG_BUILD
+endif
+
 ifneq ($(OUTPUT), tbvm)
 OBJS     := virtio.o cutils.o iomem.o fs_disk.o machine.o tbvm.o riscv_machine.o softfp.o riscv_cpu32.o 
 else

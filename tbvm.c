@@ -460,13 +460,14 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 
     RETURN_ERROR(0 != init_args, TBVM_INVALID_INIT_ARGS);
 
-#if 1
-    if (OS_TYPE_LINUX == init_args->os_type) {
-        fprintf(stdout, "******************************************************\n");
-        fprintf(stdout, "Operating System: Linux\n");
-        fprintf(stdout, "Memory Size: %d\n", init_args->memory_size);
+#ifdef DEBUG_BUILD
+    fprintf(stdout, "******************************************************\n");
 
-        if (LOADER_TYPE_DYNAMIC == init_args->loader_type) {
+    if (LOADER_TYPE_DYNAMIC == init_args->loader_type) {
+        if (OS_TYPE_LINUX == init_args->os_type) {
+            fprintf(stdout, "Operating System: Linux\n");
+            fprintf(stdout, "Memory Size: %d\n", init_args->memory_size);
+
             fprintf(stdout, "Loader Type: Dynamic\n");
             fprintf(stdout, "Bios Path: %s\n\n", init_args->loader_info.dinfo.os_linux.bios_path);
 
@@ -477,15 +478,19 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
             fprintf(stdout, "File Mount Tag: %s\n", init_args->loader_info.dinfo.os_linux.fs_mount_tag);
             fprintf(stdout, "File System Host Directory: %s\n", init_args->loader_info.dinfo.os_linux.fs_host_directory);
         } else {
-            fprintf(stdout, "Static loader for linux is not supported at the moment.\n");
+            fprintf(stdout, "Baremetal is not supported at the moment.\n");
             RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
         }
-        fprintf(stdout, "******************************************************\n");
-    } else {
-        fprintf(stdout, "Baremetal is not supported at the moment.\n");
+    }  else {
+        if (OS_TYPE_LINUX == init_args->os_type) {
+            fprintf(stdout, "Static loader for linux is not supported at the moment.\n");
+        } else {
+            fprintf(stdout, "Static loader for baremetal is not supported at the moment.\n");
+        }
         RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
     }
 
+    fprintf(stdout, "******************************************************\n");
 #endif
 
     virt_machine_set_defaults(p);

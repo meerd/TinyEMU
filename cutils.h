@@ -43,6 +43,9 @@
 #endif
 #define countof(x) (sizeof(x) / sizeof(x[0]))
 
+#define UTILS_MIN(a,b) (((a) > (b)) ? (a) : (b))
+#define UTILS_MAX(a,b) (((a) < (b)) ? (a) : (b))
+
 #define DLL_PUBLIC __attribute__ ((visibility ("default")))
 
 #ifndef _BOOL_defined
