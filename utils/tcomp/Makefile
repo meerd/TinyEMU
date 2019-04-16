@@ -55,7 +55,6 @@ OUTPUT      = tcomp
 .PHONY: run prepare dev
 
 all: prepare $(OUTPUT)
-	$(STRIP) $(BUILD_DIR)/$(OUTPUT)
 
 prepare:
 	mkdir -p $(BUILD_DIR)

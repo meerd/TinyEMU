@@ -1,8 +1,10 @@
-#include <stdint.h>
-#include <stdio.h>
-#include <limits.h>
-
+#include "miniz_common.h"
 #include "miniz.h"
+#include "cutils.h"
+
+#include <getopt.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 /*
  * TComp Image Format:
@@ -18,22 +20,14 @@
  *  | Payload n Size (4 bytes)   |
  *  | CRC32 (4 bytes)            |
  *  |----------------------------|
- *  | Package Typer (4 bytes)    |
+ *  | Package Type Info(4 bytes) |
  *  | Image Identifier (4 bytes) |
  *  | CRC32 ALL (4 bytes)        |
  *  ------------------------------
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#include <getopt.h>
-#include "miniz.h"
-#include "cutils.h"
-
 typedef unsigned char tbyte;
-typedef unsigned long tsize_t;
+typedef size_t tsize_t;
 typedef uint32_t tuint32_t;
 
 #define TCOMP_TRUE                   1
@@ -55,7 +49,7 @@ typedef struct {
     tbyte *inp_buf;
     tbyte *out_buf;
 
-    tuint32_t buf_size;
+    size_t buf_size;
 } tcomp_ctx;
 
 static const char *get_full_path(const char *path)
@@ -80,9 +74,6 @@ static const char *get_full_path(const char *path)
         if ('/' != path[0]) {
             strcpy(result, working_directory);
             strcat(result, "/");
-            if ('.' == path[0]) {
-                strcat(result, "/");
-            }
         }
 
         strcat(result, path);
@@ -93,16 +84,13 @@ static const char *get_full_path(const char *path)
 
 int tcomp_init_image(tcomp_ctx *ctx, const char *target)
 {
-    static const mz_uint s_tdefl_num_probes[11] = { 0, 1, 6, 32,  16, 32, 128, 256,  512, 768, 1500 };
     int result_code = TCOMP_FALSE;
 
     if (ctx) {
-        mz_uint comp_flags = TDEFL_WRITE_ZLIB_HEADER | s_tdefl_num_probes[10];
-
         tlogf("Initializing file descriptors...");
 
         ctx->fin  = 0;
-        ctx->fout = fopen(target, "wb");
+        ctx->fout = fopen(target, "w+");
 
         RETURN_ERROR(0 != ctx->fout, TCOMP_FALSE);
 
@@ -111,10 +99,6 @@ int tcomp_init_image(tcomp_ctx *ctx, const char *target)
         ctx->compressor = (tdefl_compressor *) malloc(sizeof(tdefl_compressor));
         /* Return with error if malloc fails! */
         RETURN_ERROR(0 != ctx->compressor, TCOMP_FALSE);
-
-        tdefl_status status = tdefl_init(ctx->compressor, NULL, NULL, comp_flags);
-        /* Return with error if compressor initialization fails! */
-        RETURN_ERROR(status == TDEFL_STATUS_OKAY, TCOMP_FALSE);
 
         tlogf("Initializing buffers for compression...");
 
@@ -140,50 +124,15 @@ on_exit:
     return result_code;
 }
 
-#if 0
-int tcomp_expand_buf_size(tcomp_ctx *ctx, tsize_t requested_size)
-{
-    if (ctx) {
-        tsize_t ptr_index = (ctx->ptr - ctx->buf);
-
-        if (requested_size > (ctx->size - ptr_index)) {
-            /* Double buffer size */
-            tsize_t new_size = ctx->size * 2;
-
-            tlogf("Expanding buffer! Requested: %zu, we have: %zu.", requested_size, (ctx->size - ptr_index));
-
-            /* Still not enough to fit in? */
-            if (requested_size > (new_size - ptr_index)) {
-                new_size += requested_size;
-            }
-
-            tlogf("New buffer size is %zu.", new_size);
-
-            tbyte *new_addr = realloc(ctx->buf, new_size);
-
-            if (new_addr) {
-                ctx->buf = new_addr;
-                ctx->ptr = ctx->buf + ptr_index;
-                return TCOMP_TRUE;
-            }
-        }
-
-        return TCOMP_TRUE;
-    }
-
-    return TCOMP_FALSE;
-}
-#endif
-
-int tcomp_add_payload(tcomp_ctx *ctx, const char *source, tsize_t fsize)
+int tcomp_add_payload(tcomp_ctx *ctx, const char *source, tuint32_t fsize, tuint32_t *out)
 {
     int result_code   = TCOMP_FALSE;
     tuint32_t crc_val = MZ_CRC32_INIT;
 
     if (ctx && source && fsize > 0) {
-        tuint32_t avail_in = 0;
-        tuint32_t avail_out = ctx->buf_size;
-        tuint32_t total_in = 0, total_out = 0;
+        size_t avail_in = 0;
+        size_t avail_out = ctx->buf_size;
+        size_t total_in = 0, total_out = 0;
         tdefl_status status;
 
         const void *next_in = ctx->inp_buf;
@@ -195,15 +144,18 @@ int tcomp_add_payload(tcomp_ctx *ctx, const char *source, tsize_t fsize)
             ctx->fin = 0;
         }
 
+        mz_uint comp_flags = TDEFL_WRITE_ZLIB_HEADER | 1500;
+        status = tdefl_init(ctx->compressor, NULL, NULL, comp_flags);
+        RETURN_ERROR(status == TDEFL_STATUS_OKAY, TCOMP_FALSE);
+
         ctx->fin = fopen(source, "rb");
         RETURN_ERROR(0 != ctx->fin, TCOMP_FALSE);
 
         while (1) {
-           tsize_t in_bytes, out_bytes;
+           size_t in_bytes, out_bytes;
 
            if (0 == avail_in) {
-              // Input buffer is empty, so read more bytes from input file.
-              uint n = UITLS_MIN(ctx->buf_size, fsize);
+              uint32_t n = UTILS_MIN(ctx->buf_size, fsize);
               int r  = fread(ctx->inp_buf, 1, n, ctx->fin);
 
               RETURN_ERROR(r == n, TCOMP_FALSE);
@@ -216,10 +168,10 @@ int tcomp_add_payload(tcomp_ctx *ctx, const char *source, tsize_t fsize)
 
            in_bytes = avail_in;
            out_bytes = avail_out;
-           // Compress as much of the input as possible (or all of it) to the output buffer.
-           tlogf("FSIZE: %d", fsize);
-           status = tdefl_compress(ctx->compressor, next_in, &in_bytes, next_out, &out_bytes, fsize ? TDEFL_NO_FLUSH : TDEFL_FINISH);
-           tlogf("STATUS: %d", status);
+
+           status = tdefl_compress(ctx->compressor, next_in, &in_bytes, next_out, &out_bytes, (fsize ? TDEFL_NO_FLUSH : TDEFL_FINISH));
+
+           RETURN_ERROR(status != TDEFL_STATUS_BAD_PARAM, TCOMP_FALSE);
 
            next_in = (const char *) next_in + in_bytes;
            avail_in -= in_bytes;
@@ -229,49 +181,44 @@ int tcomp_add_payload(tcomp_ctx *ctx, const char *source, tsize_t fsize)
            avail_out -= out_bytes;
            total_out += out_bytes;
 
-           tlogf("Next In: %u | Next Out: %u", in_bytes, out_bytes);
-
-           if ((status != TDEFL_STATUS_OKAY) || (0 != avail_out)) {
+           if ((status != TDEFL_STATUS_OKAY) || (0 == avail_out)) {
                /* Write output buffer to file */
-               tlogf("Buf size: %d | Avail out: %d", ctx->buf_size, avail_out);
 
-              uint n = ctx->buf_size - (uint) avail_out;
+              uint n = ctx->buf_size - avail_out;
               int w  = fwrite(ctx->out_buf, 1, n, ctx->fout);
-              crc_val = (mz_uint32) mz_crc32(crc_val, ctx->out_buf, n);
 
               RETURN_ERROR(w == n, TCOMP_FALSE);
+              crc_val = (mz_uint32) mz_crc32(crc_val, ctx->out_buf, n);
 
               next_out = ctx->out_buf;
               avail_out = ctx->buf_size;
+
+              if (status == TDEFL_STATUS_DONE) break;
            }
-
         }
-
-        tlogf("Adding payload (%s) - In: %d | Out: %d", source, total_in, total_out);
 
         RETURN_ERROR(status == TDEFL_STATUS_DONE || status == TDEFL_STATUS_OKAY, TCOMP_FALSE);
 
-        if (status == TDEFL_STATUS_DONE) {
+        {
            int wr;
+
+           tlogf("Adding payload (%s) - In: %d | Out: %d", source, total_in, total_out);
 
            wr = fwrite(&total_out, 1, sizeof(total_out), ctx->fout);
            RETURN_ERROR(wr == sizeof(total_out), TCOMP_FALSE);
 
-           wr = fwrite(crc32, 1, sizeof(crc32), ctx->fout);
-           RETURN_ERROR(wr == sizeof(crc32), TCOMP_FALSE);
+           wr = fwrite(&crc_val, 1, sizeof(crc_val), ctx->fout);
+           RETURN_ERROR(wr == sizeof(crc_val), TCOMP_FALSE);
 
-           tlogf("Payload (%s) successfully added!", source, total_in, total_out);
-
-           /* The chunk has been successfully written to the file. */
+           if (out) {
+               *out = total_out + sizeof(total_out) + sizeof(crc_val);
+           }
            result_code = TCOMP_TRUE;
         }
-
-        exit(0);
-     }
-
+    }
 
 on_exit:
-    tlogf("Exiting %s (Code: %d)", __FUNCTION__, result_code);
+    /* tlogf("Exiting %s for %s (Code: %d)", __FUNCTION__, source, result_code); */
 
     if (ctx->fin) {
         fclose(ctx->fin);
@@ -281,55 +228,154 @@ on_exit:
     return result_code;
 }
 
-int tcomp_finalize_image(tcomp_ctx *ctx)
+int tcomp_finalize_image(tcomp_ctx *ctx, tuint32_t type_info)
 {
+    int result_code = TCOMP_TRUE;
+
     if (ctx) {
-#if 0
         tuint32_t identifier = TCOMP_IMAGE_IDENTIFIER;
-        tuint32_t crc;
-        tuint32_t requested_size = sizeof(identifier) + sizeof(crc);
+        mz_uint32 crc_val = MZ_CRC32_INIT;
+        int wr, rd;
 
-        if (TCOMP_TRUE == tcomp_expand_buf_size(ctx, requested_size)) {
+        wr = fwrite(&type_info, 1, sizeof(type_info), ctx->fout);
+        RETURN_ERROR(wr == sizeof(type_info), TCOMP_FALSE);
 
-            /* Append payload */
-            memcpy(ctx->ptr, &identifier, sizeof(identifier));
-            ctx->ptr += sizeof(identifier);
+        wr = fwrite(&identifier, 1, sizeof(identifier), ctx->fout);
+        RETURN_ERROR(wr == sizeof(identifier), TCOMP_FALSE);
 
-            /* Append CRC32 of payload + size */
-            crc = (mz_uint32) mz_crc32(MZ_CRC32_INIT, ctx->buf, (ctx->ptr - ctx->buf));
-            memcpy(ctx->ptr, &crc, sizeof(crc));
-            ctx->ptr += sizeof(crc);
+        fflush(ctx->fout);
+        fseek(ctx->fout, 0x00, SEEK_SET);
 
-            return TCOMP_TRUE;
+        while ((rd = fread(ctx->inp_buf, 1, ctx->buf_size, ctx->fout)) > 0) {
+            crc_val = mz_crc32(crc_val, ctx->inp_buf, rd);
         }
-#endif
+
+        tlogf("Final CRC value is 0x%08X", crc_val);
+
+        wr = fwrite(&crc_val, 1, sizeof(crc_val), ctx->fout);
+        RETURN_ERROR(wr == sizeof(crc_val), TCOMP_FALSE);
+
+        /* The chunk has been successfully written to the file. */
+        fclose(ctx->fout);
+        ctx->fout = 0;
+
+        result_code = TCOMP_TRUE;
     }
 
-    tlogf("Error while adding payload!");
-
-    return TCOMP_FALSE;
+on_exit:
+    return result_code;
 }
 
+void tcomp_uninit_image(tcomp_ctx *ctx)
+{
+    if (ctx) {
+        if (ctx->fin) fclose(ctx->fin);
+        if (ctx->fout) fclose(ctx->fout);
+        free(ctx->inp_buf);
+        free(ctx->out_buf);
+    }
+}
+
+int tcomp_validate(const char *source_file)
+{
+    char buf[4096];
+    int result_code = TCOMP_FALSE;
+    const char *full_path = get_full_path(source_file);
+    tuint32_t crc_read = 0, crc_calculated = MZ_CRC32_INIT;
+    tuint32_t package_type_info  = 0;
+    tuint32_t image_identifier = 0;
+
+    int rd;
+    long data_size = 0, total_size;
+
+    FILE *fin = fopen(full_path, "r");
+    fseek(fin, -12, SEEK_END);
+
+    RETURN_ERROR(ftell(fin) > 0, TCOMP_FALSE);
+
+    rd = fread(&package_type_info, 1, sizeof(package_type_info), fin);
+    RETURN_ERROR(rd == sizeof(package_type_info), TCOMP_FALSE);
+
+    rd = fread(&image_identifier, 1, sizeof(image_identifier), fin);
+    RETURN_ERROR(rd == sizeof(image_identifier), TCOMP_FALSE);
+
+    data_size = ftell(fin);
+    rd = fread(&crc_read, 1, sizeof(crc_read), fin);
+    RETURN_ERROR(rd == sizeof(crc_read), TCOMP_FALSE);
+
+    tlogf("Read CRC of the source file is 0x%08X.", crc_read);
+
+    fseek(fin, 0x0, SEEK_SET);
+
+    do {
+        rd = fread(buf, 1, sizeof(buf), fin);
+        if (rd != sizeof(buf)) {
+            rd -= sizeof(crc_read);
+        }
+        crc_calculated = mz_crc32(crc_calculated, buf, rd);
+        data_size -= rd;
+        total_size += rd;
+    } while (rd != EOF && data_size > 0);
+
+    RETURN_ERROR(crc_calculated == crc_read, TCOMP_FALSE);
+
+    tlogf("CRCs matched!");
+
+    if (TCOMP_IMAGE_IDENTIFIER == image_identifier) {
+        tlogf("Image identifier is correct!");
+    } else {
+        tlogf("Image identifier is not correct!");
+    }
+
+    tlogf("Package Type Info: 0x%08X", package_type_info);
+on_exit:
+    return result_code;
+}
 
 int tcomp_embed(const char *destination_file, const char *source_file)
 {
 
 }
 
-int tcomp_create(const char *dest, const char *sources[], tuint32_t *size_info[], tuint32_t type_info)
+int tcomp_create(const char *dest, const char *sources[], tuint32_t *size_info, tuint32_t type_info)
 {
     tcomp_ctx ctx;
-    int retval = TCOMP_FALSE;
+    tuint32_t output_size, total_size;
+    int result = TCOMP_FALSE;
 
     if (tcomp_init_image(&ctx, dest)) {
         int i;
 
+        total_size = 0;
+
         for (i = 0; i < TCOMP_ADD_MODE_INPUT_LIMIT; ++i) {
             if (0 == sources[i]) break;
 
-            tcomp_add_payload(&ctx, sources[i], size_info[i]);
+            output_size = 0;
+            result = tcomp_add_payload(&ctx, sources[i], size_info[i], &output_size);
+
+            if (TCOMP_TRUE == result) {
+                total_size += output_size;
+                fflush(ctx.fout);
+            } else {
+                tlogf("Error while compressing %s!", sources[i]);
+                result = TCOMP_FALSE;
+                break;
+            }
+        }
+
+        if (TCOMP_TRUE == result) {
+            result = tcomp_finalize_image(&ctx, type_info);
+            if (TCOMP_TRUE == result) {
+                tlogf("Compression successfull! Total image size is %u Bytes.", total_size + 12);
+            } else {
+                tlogf("Image finalization error!");
+            }
         }
     }
+
+    tcomp_uninit_image(&ctx);
+    return result;
 }
 
 int main(int argc, char **argv)
@@ -340,6 +386,7 @@ int main(int argc, char **argv)
     const char *embed_mode_files[TCOMP_EMBED_MODE_ARG_COUNT]     = { 0 };
     const char *output_file                                      = 0;
     tuint32_t  image_type_info                                   = 0x00000000;
+    int result;
 
     BOOL creat_mode = FALSE;
     BOOL embed_mode = FALSE;
@@ -347,11 +394,12 @@ int main(int argc, char **argv)
     struct stat sta;
 
     static struct option options[] = {
-        { "add",    required_argument,  NULL, 'a' },
-        { "embed",  required_argument,  NULL, 'e' },
-        { "type",   required_argument,  NULL, 't' },
-        { "output", required_argument,  NULL, 'o' },
-        { "help",   no_argument,        NULL, 'h' },
+        { "add",      required_argument,  NULL, 'a' },
+        { "embed",    required_argument,  NULL, 'e' },
+        { "type",     required_argument,  NULL, 't' },
+        { "output",   required_argument,  NULL, 'o' },
+        { "validate", required_argument,  NULL, 'v' },
+        { "help",     no_argument,        NULL, 'h' },
         { NULL },
     };
 
@@ -383,7 +431,7 @@ int main(int argc, char **argv)
                     }
 
                     input_files_size_info[i] = sta.st_size;
-                    tlogf("ADD MODE: Found file %s (%zu bytes)", argv[optind], input_files_size_info[i]);
+                    tlogf("ADD MODE: Found file %s (%u bytes)", input_files[i], input_files_size_info[i]);
                     ++i;
                 }
             }
@@ -434,6 +482,10 @@ int main(int argc, char **argv)
 
                 tlogf("Output file full path is %s", output_file);
             }
+            break;
+
+        case 'v':
+            tcomp_validate(optarg);
             break;
 
         case '?':
