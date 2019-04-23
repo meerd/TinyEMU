@@ -22,13 +22,22 @@
  *  |----------------------------|
  *  | Package Type Info(4 bytes) |
  *  | Image Identifier (4 bytes) |
+ *  | Payload Count (4 bytes)    |
  *  | CRC32 ALL (4 bytes)        |
  *  ------------------------------
  */
 
 typedef unsigned char tbyte;
-typedef size_t tsize_t;
+typedef size_t        tsize_t;
+typedef int32_t tint32_t;
 typedef uint32_t tuint32_t;
+
+typedef struct {
+    tuint32_t package_type_info;
+    tuint32_t image_identifier;
+    tuint32_t payload_count;
+    tuint32_t crc_image;
+} tcomp_image_footer_t;
 
 #define TCOMP_TRUE                   1
 #define TCOMP_FALSE                  0
@@ -132,7 +141,7 @@ int tcomp_add_payload(tcomp_ctx *ctx, const char *source, tuint32_t fsize, tuint
     if (ctx && source && fsize > 0) {
         size_t avail_in = 0;
         size_t avail_out = ctx->buf_size;
-        size_t total_in = 0, total_out = 0;
+        uint32_t total_in = 0, total_out = 0;
         tdefl_status status;
 
         const void *next_in = ctx->inp_buf;
@@ -202,7 +211,7 @@ int tcomp_add_payload(tcomp_ctx *ctx, const char *source, tuint32_t fsize, tuint
         {
            int wr;
 
-           tlogf("Adding payload (%s) - In: %d | Out: %d", source, total_in, total_out);
+           tlogf("Adding payload (%s) - In: %u | Out: %u | CRC 0x%08X", source, total_in, total_out, crc_val);
 
            wr = fwrite(&total_out, 1, sizeof(total_out), ctx->fout);
            RETURN_ERROR(wr == sizeof(total_out), TCOMP_FALSE);
@@ -228,7 +237,7 @@ on_exit:
     return result_code;
 }
 
-int tcomp_finalize_image(tcomp_ctx *ctx, tuint32_t type_info)
+int tcomp_finalize_image(tcomp_ctx *ctx, tuint32_t type_info, tuint32_t payload_count)
 {
     int result_code = TCOMP_TRUE;
 
@@ -241,6 +250,9 @@ int tcomp_finalize_image(tcomp_ctx *ctx, tuint32_t type_info)
         RETURN_ERROR(wr == sizeof(type_info), TCOMP_FALSE);
 
         wr = fwrite(&identifier, 1, sizeof(identifier), ctx->fout);
+        RETURN_ERROR(wr == sizeof(identifier), TCOMP_FALSE);
+
+        wr = fwrite(&payload_count, 1, sizeof(payload_count), ctx->fout);
         RETURN_ERROR(wr == sizeof(identifier), TCOMP_FALSE);
 
         fflush(ctx->fout);
@@ -276,7 +288,7 @@ void tcomp_uninit_image(tcomp_ctx *ctx)
     }
 }
 
-int tcomp_validate(const char *source_file)
+int tcomp_validate(const char *source_file, tcomp_image_footer_t *footer)
 {
     char buf[4096];
     int result_code = TCOMP_FALSE;
@@ -284,12 +296,13 @@ int tcomp_validate(const char *source_file)
     tuint32_t crc_read = 0, crc_calculated = MZ_CRC32_INIT;
     tuint32_t package_type_info  = 0;
     tuint32_t image_identifier = 0;
+    tuint32_t payload_count = 0;
 
     int rd;
     long data_size = 0, total_size;
 
     FILE *fin = fopen(full_path, "r");
-    fseek(fin, -12, SEEK_END);
+    fseek(fin, -16, SEEK_END);
 
     RETURN_ERROR(ftell(fin) > 0, TCOMP_FALSE);
 
@@ -298,6 +311,9 @@ int tcomp_validate(const char *source_file)
 
     rd = fread(&image_identifier, 1, sizeof(image_identifier), fin);
     RETURN_ERROR(rd == sizeof(image_identifier), TCOMP_FALSE);
+
+    rd = fread(&payload_count, 1, sizeof(payload_count), fin);
+    RETURN_ERROR(rd == sizeof(payload_count), TCOMP_FALSE);
 
     data_size = ftell(fin);
     rd = fread(&crc_read, 1, sizeof(crc_read), fin);
@@ -325,10 +341,124 @@ int tcomp_validate(const char *source_file)
         tlogf("Image identifier is correct!");
     } else {
         tlogf("Image identifier is not correct!");
+        RETURN_ERROR(TCOMP_IMAGE_IDENTIFIER == image_identifier, TCOMP_FALSE);
     }
 
-    tlogf("Package Type Info: 0x%08X", package_type_info);
+    if (footer) {
+        footer->package_type_info = package_type_info;
+        footer->image_identifier = image_identifier;
+        footer->payload_count = payload_count;
+        footer->crc_image = crc_calculated;
+    }
+
+    tlogf("Package Type Info: 0x%08X", footer->package_type_info);
+    tlogf("!Number of payloads: %d", footer->payload_count);
+
+
+    result_code = TCOMP_TRUE;
+
 on_exit:
+    if (fin) fclose(fin);
+    free(full_path);
+
+    return result_code;
+}
+
+int load_content(FILE *f, tbyte *buf, tuint32_t size, tuint32_t *read)
+{
+    int result = TCOMP_FALSE;
+    int block_size = 1024;
+    int rd;
+
+    if (f && buf && read) {
+        *read = 0;
+
+        while (size > 0) {
+            if (block_size >= size) {
+                block_size = size;
+            }
+
+            rd = fread(buf + *read, 1, block_size, f);
+            *read += rd;
+            size -= rd;
+            if (rd <= 0) break;
+
+            result = TCOMP_TRUE;
+        }
+    }
+
+    return result;
+}
+
+int tcomp_load(const char *source_file, tint32_t payload_count, tbyte **images, tuint32_t *nb_images)
+{
+    int result_code = TCOMP_FALSE;
+    const char *full_path = 0;
+    FILE *fin = 0;
+
+    if (source_file && images && nb_images) {
+        full_path = get_full_path(source_file);
+        fin = fopen(full_path, "rb");
+
+        if (fin) {
+            int image_index = 0;
+            int findex = -24;
+            tint32_t  image_size;
+            tuint32_t image_crc;
+            int rd;
+
+            *images = (tbyte *) calloc(sizeof(tbyte *), TCOMP_ADD_MODE_INPUT_LIMIT);
+            *nb_images = 0;
+            fseek(fin, findex, SEEK_END);
+
+            do {
+                if (payload_count-- < 0) {
+                    tlogf("Quitting...");
+                    break;
+                }
+
+                rd = fread(&image_size, 1, sizeof(tuint32_t), fin);
+                RETURN_ERROR(rd == sizeof(tuint32_t), TCOMP_FALSE);
+
+                rd = fread(&image_crc, 1, sizeof(tuint32_t), fin);
+                RETURN_ERROR(rd == sizeof(tuint32_t), TCOMP_FALSE);
+
+                /*
+                tlogf("Image size is: %u", image_size);
+                tlogf("Image CRC is: 0x%08x", image_crc);
+                */
+
+                findex = -(image_size + 8);
+                fseek(fin, findex, SEEK_CUR);
+
+                images[image_index] = calloc(sizeof(tbyte), image_size);
+                tint32_t read_size = 0;
+                tuint32_t calc_crc = MZ_CRC32_INIT;
+                load_content(fin, images[image_index], image_size, &read_size);
+
+                calc_crc = (mz_uint32) mz_crc32(calc_crc, images[image_index], read_size);
+
+                if (calc_crc != image_crc) {
+                    tlogf("CRC mismatch at image index: %d", image_index);
+                    RETURN_ERROR(calc_crc == image_crc, TCOMP_FALSE);
+                } else {
+                    tlogf("%d) Image size: %ld | CRC: 0x%08x", image_index + 1, image_size, calc_crc);
+                }
+
+                findex = -(image_size + 8);
+
+                if (-1 == fseek(fin, findex, SEEK_CUR)) {
+                    tlogf("Loading images completed!");
+                    break;
+                }
+            } while (++image_index < TCOMP_ADD_MODE_INPUT_LIMIT);
+        }
+    }
+
+on_exit:
+    if (fin) fclose(fin);
+    free(full_path);
+
     return result_code;
 }
 
@@ -365,7 +495,7 @@ int tcomp_create(const char *dest, const char *sources[], tuint32_t *size_info, 
         }
 
         if (TCOMP_TRUE == result) {
-            result = tcomp_finalize_image(&ctx, type_info);
+            result = tcomp_finalize_image(&ctx, type_info, i);
             if (TCOMP_TRUE == result) {
                 tlogf("Compression successfull! Total image size is %u Bytes.", total_size + 12);
             } else {
@@ -484,9 +614,20 @@ int main(int argc, char **argv)
             }
             break;
 
-        case 'v':
-            tcomp_validate(optarg);
-            break;
+        case 'v':            
+            {
+                tcomp_image_footer_t footer;
+
+                if (TCOMP_TRUE == tcomp_validate(optarg, &footer)) {
+                    tuint32_t nb_images = 0;
+                    tbyte *images = 0;
+
+                    tcomp_load(optarg, footer.payload_count, &images, &nb_images);
+                } else {
+                    tlogf("%s is not a valid image!", optarg);
+                }
+            }
+            return 0;
 
         case '?':
         case 'h':
