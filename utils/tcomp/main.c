@@ -23,6 +23,7 @@
  *  | Package Type Info(4 bytes) |
  *  | Image Identifier (4 bytes) |
  *  | Payload Count (4 bytes)    |
+ *  | Image Size (4 bytes)       |
  *  | CRC32 ALL (4 bytes)        |
  *  ------------------------------
  */
@@ -45,6 +46,10 @@ typedef struct {
 #define TCOMP_EMBED_MODE_ARG_COUNT   2
 
 #define TCOMP_IMAGE_IDENTIFIER  0xFEEDBABE
+
+#define PAYLOAD_COUNT_UNKNOWN   0x7FFFFFFF
+
+#define FOOTER_SIZE 20
 
 #define tlogf(msg, ...) fprintf(stdout, msg "\n", ##__VA_ARGS__)
 
@@ -237,7 +242,7 @@ on_exit:
     return result_code;
 }
 
-int tcomp_finalize_image(tcomp_ctx *ctx, tuint32_t type_info, tuint32_t payload_count)
+int tcomp_finalize_image(tcomp_ctx *ctx, tuint32_t type_info, tuint32_t payload_count, tuint32_t image_size)
 {
     int result_code = TCOMP_TRUE;
 
@@ -254,6 +259,9 @@ int tcomp_finalize_image(tcomp_ctx *ctx, tuint32_t type_info, tuint32_t payload_
 
         wr = fwrite(&payload_count, 1, sizeof(payload_count), ctx->fout);
         RETURN_ERROR(wr == sizeof(identifier), TCOMP_FALSE);
+
+        wr = fwrite(&image_size, 1, sizeof(image_size), ctx->fout);
+        RETURN_ERROR(wr == sizeof(image_size), TCOMP_FALSE);
 
         fflush(ctx->fout);
         fseek(ctx->fout, 0x00, SEEK_SET);
@@ -298,11 +306,11 @@ int tcomp_validate(const char *source_file, tcomp_image_footer_t *footer)
     tuint32_t image_identifier = 0;
     tuint32_t payload_count = 0;
 
-    int rd;
-    long data_size = 0, total_size;
+    int rd = 0;
+    int32_t image_size = 0, total_size;
 
     FILE *fin = fopen(full_path, "r");
-    fseek(fin, -16, SEEK_END);
+    fseek(fin, -1 * FOOTER_SIZE, SEEK_END);
 
     RETURN_ERROR(ftell(fin) > 0, TCOMP_FALSE);
 
@@ -315,23 +323,32 @@ int tcomp_validate(const char *source_file, tcomp_image_footer_t *footer)
     rd = fread(&payload_count, 1, sizeof(payload_count), fin);
     RETURN_ERROR(rd == sizeof(payload_count), TCOMP_FALSE);
 
-    data_size = ftell(fin);
+    rd = fread(&image_size, 1, sizeof(image_size), fin);
+    RETURN_ERROR(rd == sizeof(image_size), TCOMP_FALSE);
+
+    //data_size = ftell(fin);
+
     rd = fread(&crc_read, 1, sizeof(crc_read), fin);
     RETURN_ERROR(rd == sizeof(crc_read), TCOMP_FALSE);
 
     tlogf("Read CRC of the source file is 0x%08X.", crc_read);
+    tlogf("Image size is %d.", image_size);
 
-    fseek(fin, 0x0, SEEK_SET);
+
+    fseek(fin, -image_size, SEEK_END);
 
     do {
-        rd = fread(buf, 1, sizeof(buf), fin);
+        if (0 == (rd = fread(buf, 1, sizeof(buf), fin)))
+            break;
+
         if (rd != sizeof(buf)) {
             rd -= sizeof(crc_read);
         }
+
         crc_calculated = mz_crc32(crc_calculated, buf, rd);
-        data_size -= rd;
+        image_size -= rd;
         total_size += rd;
-    } while (rd != EOF && data_size > 0);
+    } while (rd > 0 && image_size > 0);
 
     RETURN_ERROR(crc_calculated == crc_read, TCOMP_FALSE);
 
@@ -359,7 +376,7 @@ int tcomp_validate(const char *source_file, tcomp_image_footer_t *footer)
 
 on_exit:
     if (fin) fclose(fin);
-    free(full_path);
+    free((void *) full_path);
 
     return result_code;
 }
@@ -390,30 +407,29 @@ int load_content(FILE *f, tbyte *buf, tuint32_t size, tuint32_t *read)
     return result;
 }
 
-int tcomp_load(const char *source_file, tint32_t payload_count, tbyte **images, tuint32_t *nb_images)
+int tcomp_load(const char *source_file, tint32_t payload_count, tbyte *images[], tuint32_t image_sizes[])
 {
     int result_code = TCOMP_FALSE;
     const char *full_path = 0;
     FILE *fin = 0;
+    int nb_image_loaded = 0;
 
-    if (source_file && images && nb_images) {
+    if (source_file && images && image_sizes) {
         full_path = get_full_path(source_file);
         fin = fopen(full_path, "rb");
 
         if (fin) {
             int image_index = 0;
-            int findex = -24;
+            int findex = -(8 + FOOTER_SIZE);
             tint32_t  image_size;
             tuint32_t image_crc;
             int rd;
 
-            *images = (tbyte *) calloc(sizeof(tbyte *), TCOMP_ADD_MODE_INPUT_LIMIT);
-            *nb_images = 0;
             fseek(fin, findex, SEEK_END);
 
             do {
-                if (payload_count-- < 0) {
-                    tlogf("Quitting...");
+                if (payload_count-- <= 0) {
+                    /* tlogf("Quitting..."); */
                     break;
                 }
 
@@ -422,11 +438,6 @@ int tcomp_load(const char *source_file, tint32_t payload_count, tbyte **images, 
 
                 rd = fread(&image_crc, 1, sizeof(tuint32_t), fin);
                 RETURN_ERROR(rd == sizeof(tuint32_t), TCOMP_FALSE);
-
-                /*
-                tlogf("Image size is: %u", image_size);
-                tlogf("Image CRC is: 0x%08x", image_crc);
-                */
 
                 findex = -(image_size + 8);
                 fseek(fin, findex, SEEK_CUR);
@@ -441,12 +452,13 @@ int tcomp_load(const char *source_file, tint32_t payload_count, tbyte **images, 
                 if (calc_crc != image_crc) {
                     tlogf("CRC mismatch at image index: %d", image_index);
                     RETURN_ERROR(calc_crc == image_crc, TCOMP_FALSE);
-                } else {
-                    tlogf("%d) Image size: %ld | CRC: 0x%08x", image_index + 1, image_size, calc_crc);
                 }
 
-                findex = -(image_size + 8);
+                image_sizes[image_index] = read_size;
+                ++nb_image_loaded;
+                result_code = TCOMP_TRUE;
 
+                findex = -(image_size + 8);
                 if (-1 == fseek(fin, findex, SEEK_CUR)) {
                     tlogf("Loading images completed!");
                     break;
@@ -455,16 +467,52 @@ int tcomp_load(const char *source_file, tint32_t payload_count, tbyte **images, 
         }
     }
 
+
 on_exit:
+    {
+        for (int i = 0; i < nb_image_loaded / 2; ++i) {
+            tbyte *itmp = images[i];
+
+            images[i] = images[nb_image_loaded - i - 1];
+            images[nb_image_loaded - i - 1] = itmp;
+
+            image_sizes[i] ^= image_sizes[nb_image_loaded - i - 1] ^= image_sizes[i] ^= image_sizes[nb_image_loaded - i - 1];
+        }
+    }
+
     if (fin) fclose(fin);
-    free(full_path);
+    free((void *) full_path);
 
     return result_code;
 }
 
 int tcomp_embed(const char *destination_file, const char *source_file)
 {
+    char buf[4096];
+    FILE *fout = fopen(destination_file, "ab");
+    FILE *fin = fopen(source_file, "rb");
+    int result_code = TCOMP_FALSE;
 
+    if (fout && fin) {
+        int r = fseek(fout, 0x00, SEEK_END);
+        int w;
+
+        RETURN_ERROR(-1 != r, TCOMP_FALSE);
+
+        while (0 != (r = fread(buf, 1, sizeof(buf), fin))) {
+            w = fwrite(buf, 1, r, fout);
+            RETURN_ERROR(w == r, TCOMP_FALSE);
+        }
+
+        tlogf("Embedding successful!");
+        result_code = TCOMP_TRUE;
+    }
+
+on_exit:
+    if (fout) fclose(fout);
+    if (fin) fclose(fin);
+
+    return result_code;
 }
 
 int tcomp_create(const char *dest, const char *sources[], tuint32_t *size_info, tuint32_t type_info)
@@ -495,9 +543,9 @@ int tcomp_create(const char *dest, const char *sources[], tuint32_t *size_info, 
         }
 
         if (TCOMP_TRUE == result) {
-            result = tcomp_finalize_image(&ctx, type_info, i);
+            result = tcomp_finalize_image(&ctx, type_info, i, total_size + FOOTER_SIZE);
             if (TCOMP_TRUE == result) {
-                tlogf("Compression successfull! Total image size is %u Bytes.", total_size + 12);
+                tlogf("Compression successfull! Total image size is %u Bytes.", total_size + FOOTER_SIZE);
             } else {
                 tlogf("Image finalization error!");
             }
@@ -619,10 +667,10 @@ int main(int argc, char **argv)
                 tcomp_image_footer_t footer;
 
                 if (TCOMP_TRUE == tcomp_validate(optarg, &footer)) {
-                    tuint32_t nb_images = 0;
-                    tbyte *images = 0;
+                    tbyte *images[TCOMP_ADD_MODE_INPUT_LIMIT] = { 0 };
+                    tuint32_t image_sizes[TCOMP_ADD_MODE_INPUT_LIMIT] = { 0 };
 
-                    tcomp_load(optarg, footer.payload_count, &images, &nb_images);
+                    tcomp_load(optarg, footer.payload_count, images, image_sizes);
                 } else {
                     tlogf("%s is not a valid image!", optarg);
                 }
@@ -676,96 +724,3 @@ int main(int argc, char **argv)
 
     return 0;
 }
-
-#if 0
-
-   else if ((pMode[0] == 'd') || (pMode[0] == 'D'))
-   {
-      // Decompression.
-      uint infile_remaining = infile_size;
-
-      tinfl_decompressor inflator;
-      tinfl_init(&inflator);
-
-      for ( ; ; )
-      {
-         size_t in_bytes, out_bytes;
-         tinfl_status status;
-         if (!avail_in)
-         {
-            // Input buffer is empty, so read more bytes from input file.
-            uint n = my_min(IN_BUF_SIZE, infile_remaining);
-
-            if (fread(s_inbuf, 1, n, pInfile) != n)
-            {
-               printf("Failed reading from input file!\n");
-               return EXIT_FAILURE;
-            }
-
-            next_in = s_inbuf;
-            avail_in = n;
-
-            infile_remaining -= n;
-         }
-
-         in_bytes = avail_in;
-         out_bytes = avail_out;
-         status = tinfl_decompress(&inflator, (const mz_uint8 *)next_in, &in_bytes, s_outbuf, (mz_uint8 *)next_out, &out_bytes, (infile_remaining ? TINFL_FLAG_HAS_MORE_INPUT : 0) | TINFL_FLAG_PARSE_ZLIB_HEADER);
-
-         avail_in -= in_bytes;
-         next_in = (const mz_uint8 *)next_in + in_bytes;
-         total_in += in_bytes;
-
-         avail_out -= out_bytes;
-         next_out = (mz_uint8 *)next_out + out_bytes;
-         total_out += out_bytes;
-
-         if ((status <= TINFL_STATUS_DONE) || (!avail_out))
-         {
-            // Output buffer is full, or decompression is done, so write buffer to output file.
-            uint n = OUT_BUF_SIZE - (uint)avail_out;
-            if (fwrite(s_outbuf, 1, n, pOutfile) != n)
-            {
-               printf("Failed writing to output file!\n");
-               return EXIT_FAILURE;
-            }
-            next_out = s_outbuf;
-            avail_out = OUT_BUF_SIZE;
-         }
-
-         // If status is <= TINFL_STATUS_DONE then either decompression is done or something went wrong.
-         if (status <= TINFL_STATUS_DONE)
-         {
-            if (status == TINFL_STATUS_DONE)
-            {
-               // Decompression completed successfully.
-               break;
-            }
-            else
-            {
-               // Decompression failed.
-               printf("tinfl_decompress() failed with status %i!\n", status);
-               return EXIT_FAILURE;
-            }
-         }
-      }
-   }
-   else
-   {
-      printf("Invalid mode!\n");
-      return EXIT_FAILURE;
-   }
-
-   fclose(pInfile);
-   if (EOF == fclose(pOutfile))
-   {
-      printf("Failed writing to output file!\n");
-      return EXIT_FAILURE;
-   }
-
-   printf("Total input bytes: %u\n", (mz_uint32)total_in);
-   printf("Total output bytes: %u\n", (mz_uint32)total_out);
-   printf("Success.\n");
-   return EXIT_SUCCESS;
-}
-#endif
