@@ -494,11 +494,7 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 #endif
 
     virt_machine_set_defaults(p);
-#ifndef JSON_PARSER
     virt_machine_set_config(p, init_args);
-#else
-    virt_machine_load_config_file(p, init_args->config_path, NULL, NULL);
-#endif
 
     /* override some config parameters */
 

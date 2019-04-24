@@ -160,18 +160,4 @@ static inline int ctz32(uint32_t a)
 void *tbvm_malloc(size_t size);
 void tbvm_sleep(unsigned int msec);
 
-#ifdef JSON_PARSER
-typedef struct {
-    uint8_t *buf;
-    size_t size;
-    size_t allocated_size;
-} DynBuf;
-
-void dbuf_init(DynBuf *s);
-void dbuf_write(DynBuf *s, size_t offset, const uint8_t *data, size_t len);
-void dbuf_putc(DynBuf *s, uint8_t c);
-void dbuf_putstr(DynBuf *s, const char *str);
-void dbuf_free(DynBuf *s);
-#endif
-
 #endif /* CUTILS_H */
