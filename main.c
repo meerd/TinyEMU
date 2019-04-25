@@ -30,7 +30,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    fprintf(stdout, "Attemp running virtual machine...\n");
+    fprintf(stdout, "Attempt running virtual machine...\n");
 
     tbvm_run(ctx, 0, 0);
 

@@ -455,7 +455,7 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
     int i;
     int result_code;
 
-    BlockDeviceModeEnum drive_mode = BF_MODE_RW; /* Use disk in RW mode. Snapshot mode uses extra memory. */
+    BlockDeviceModeEnum drive_mode = BF_MODE_SNAPSHOT;
     VirtMachineParams p_s, *p = &p_s;
 
     RETURN_ERROR(0 != init_args, TBVM_INVALID_INIT_ARGS);
