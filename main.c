@@ -23,6 +23,7 @@ int main(int argc, char **argv)
 
     tbvm_get_default_init_arguments(&init_args);
 
+    init_args.loader_type = LOADER_TYPE_STATIC;
     ctx = tbvm_init(&init_args, &err);
 
     if (0 == ctx) {

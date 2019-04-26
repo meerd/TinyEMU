@@ -1,7 +1,6 @@
 #
-# TBVM (A fork of TinyEMU)
+# TBVM (A fork of TinyEMU) Image Create & Load API
 # 
-# Copyright (c) 2016-2018 Fabrice Bellard
 # Copyright (c) 2019 Erdem Meydanli
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -47,10 +46,10 @@ MINIZ_PATH := $(WORKING_DIRECTORY)../../external/miniz
 CFLAGS     += -I$(MINIZ_PATH) -I$(WORKING_DIRECTORY)/../..
 BUILD_DIR   = $(WORKING_DIRECTORY)build
 
-OBJS       := main.o miniz.o miniz_tdef.o miniz_tinfl.o
+OBJS       := main.o timg.o miniz.o miniz_tdef.o miniz_tinfl.o
 OBJS       := $(addprefix $(BUILD_DIR)/, $(OBJS))
 
-OUTPUT      = tcomp
+OUTPUT      = timg
 
 .PHONY: run prepare dev
 

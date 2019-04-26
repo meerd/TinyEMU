@@ -36,6 +36,8 @@
 #include "iomem.h"
 #include "virtio.h"
 #include "machine.h"
+
+#include "utils/timg/timg.h"
 #include "tbvm.h"
 
 void __attribute__((format(printf, 1, 2))) vm_error(const char *fmt, ...)
@@ -140,23 +142,46 @@ void virt_machine_set_config(VirtMachineParams *p, const tbvm_init_t *init_args)
     p->vmc = &riscv_machine_class;
     p->vmc->virt_machine_set_defaults(p);
 
+    if (LOADER_TYPE_DYNAMIC == init_args->loader_type) {
+        if (OS_TYPE_LINUX == init_args->os_type) {
+            p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_linux.bios_path;
+            p->files[VM_FILE_KERNEL].filename = (char *) init_args->loader_info.dinfo.os_linux.kernel_path;
+            p->cmdline = (char *) init_args->loader_info.dinfo.os_linux.cmdline;
+            /* TODO: Add multiple disk support back */
+            p->tab_drive[0].filename = (char *) init_args->loader_info.dinfo.os_linux.disk_image_path;
+            p->drive_count = 1;
+            p->tab_fs[0].tag = (char *) init_args->loader_info.dinfo.os_linux.fs_mount_tag;
+            p->tab_fs[0].filename = (char *) init_args->loader_info.dinfo.os_linux.fs_host_directory;
+            p->fs_count = 1;
+        } else {
+            p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_baremetal.binary_path;
+        }
 
-    if (OS_TYPE_LINUX == init_args->os_type) {
-        p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_linux.bios_path;
-        p->files[VM_FILE_KERNEL].filename = (char *) init_args->loader_info.dinfo.os_linux.kernel_path;
-        p->cmdline = (char *) init_args->loader_info.dinfo.os_linux.cmdline;
-        /* TODO: Add multiple disk support back */
-        p->tab_drive[0].filename = (char *) init_args->loader_info.dinfo.os_linux.disk_image_path;
-        p->drive_count = 1;
-        p->tab_fs[0].tag = (char *) init_args->loader_info.dinfo.os_linux.fs_mount_tag;
-        p->tab_fs[0].filename = (char *) init_args->loader_info.dinfo.os_linux.fs_host_directory;
-        p->fs_count = 1;
+        s->file_index = 0;
+        config_additional_file_load(s);
     } else {
-        p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_baremetal.binary_path;
-    }
+        timg_image_footer_t footer;
+        const char *source = "/usr/local/lib/libtbvm.so";
 
-    s->file_index = 0;
-    config_additional_file_load(s);
+        if (TIMG_TRUE == timg_validate(source, &footer)) {
+            tbyte *images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+            tuint32_t image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+
+            timg_load(source, footer.payload_count, images, image_sizes);
+
+            {
+                int i;
+
+                for (i = 0; i < TIMG_ADD_MODE_INPUT_LIMIT; ++i) {
+                    printf("images: %p | sizes: %d\n", images[i], image_sizes[i]);
+                }
+            }
+        } else {
+            tlogf("%s is not a valid image!", source);
+        }
+
+        exit(0);
+    }
 }
 
 static void config_additional_file_load(VMConfigLoadState *s)

@@ -465,6 +465,8 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 
     if (LOADER_TYPE_DYNAMIC == init_args->loader_type) {
         if (OS_TYPE_LINUX == init_args->os_type) {
+            drive_mode = BF_MODE_SNAPSHOT;
+
             fprintf(stdout, "Operating System: Linux\n");
             fprintf(stdout, "Memory Size: %d\n", init_args->memory_size);
 
@@ -483,18 +485,28 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
         }
     }  else {
         if (OS_TYPE_LINUX == init_args->os_type) {
-            fprintf(stdout, "Static loader for linux is not supported at the moment.\n");
+            fprintf(stdout, "Using static image for the bootloader, kernel and rootfs...\n");
+            drive_mode = BF_MODE_SNAPSHOT;
         } else {
             fprintf(stdout, "Static loader for baremetal is not supported at the moment.\n");
+            RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
         }
-        RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
     }
 
     fprintf(stdout, "******************************************************\n");
 #endif
 
+    printf("0--------------- BUF: %p | LEN: %d\n", p->files[0].buf, p->files[0].len);
+    printf("1--------------- BUF: %p | LEN: %d\n", p->files[1].buf, p->files[1].len);
+    printf("2--------------- BUF: %p | LEN: %d\n", p->files[2].buf, p->files[2].len);
+
     virt_machine_set_defaults(p);
     virt_machine_set_config(p, init_args);
+
+    printf("+0--------------- BUF: %p | LEN: %d\n", p->files[0].buf, p->files[0].len);
+    printf("+1--------------- BUF: %p | LEN: %d\n", p->files[1].buf, p->files[1].len);
+    printf("+2--------------- BUF: %p | LEN: %d\n", p->files[2].buf, p->files[2].len);
+
 
     /* override some config parameters */
 

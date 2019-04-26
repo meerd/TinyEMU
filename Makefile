@@ -44,6 +44,8 @@ LIBS     = -lrt
 # ########### Sources & Libraries -----------------------------
 
 WORKING_DIRECTORY := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+VPATH = $(WORKING_DIRECTORY)/utils/timg $(WORKING_DIRECTORY)/external/miniz
+
 BUILT_SHARED_FLAG  = $(BUILD_DIR)/.built_shared
 BUILT_STATIC_FLAG  = $(BUILD_DIR)/.built_static
 
@@ -68,6 +70,7 @@ endif
 BUILD_DIR = $(WORKING_DIRECTORY)build
 INSTALL   = install
 
+CFLAGS   += -I$(WORKING_DIRECTORY) -I$(WORKING_DIRECTORY)/utils/timg/ -I$(WORKING_DIRECTORY)/external/miniz/
 CFLAGS   += -DCONFIG_RISCV_MAX_XLEN=32
 
 ifeq ($(DEBUG),1)
@@ -76,6 +79,7 @@ endif
 
 ifneq ($(OUTPUT), tbvm)
 OBJS     := virtio.o cutils.o iomem.o fs_disk.o machine.o tbvm.o riscv_machine.o softfp.o riscv_cpu32.o 
+OBJS     += timg.o miniz.o miniz_tdef.o miniz_tinfl.o
 else
 OBJS     := main.o
 endif
