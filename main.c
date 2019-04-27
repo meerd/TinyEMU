@@ -22,8 +22,6 @@ int main(int argc, char **argv)
     fprintf(stdout, "Tiny-bang Virtual Machine %s - %s\n", tbvm_get_version_info(), tbvm_get_build_info());
 
     tbvm_get_default_init_arguments(&init_args);
-
-    init_args.loader_type = LOADER_TYPE_STATIC;
     ctx = tbvm_init(&init_args, &err);
 
     if (0 == ctx) {

@@ -142,80 +142,90 @@ void virt_machine_set_config(VirtMachineParams *p, const tbvm_init_t *init_args)
     p->vmc = &riscv_machine_class;
     p->vmc->virt_machine_set_defaults(p);
 
-    if (LOADER_TYPE_DYNAMIC == init_args->loader_type) {
-        if (OS_TYPE_LINUX == init_args->os_type) {
-            p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_linux.bios_path;
-            p->files[VM_FILE_KERNEL].filename = (char *) init_args->loader_info.dinfo.os_linux.kernel_path;
-            p->cmdline = (char *) init_args->loader_info.dinfo.os_linux.cmdline;
-            /* TODO: Add multiple disk support back */
-            p->tab_drive[0].filename = (char *) init_args->loader_info.dinfo.os_linux.disk_image_path;
-            p->drive_count = 1;
+    p->cmdline = (char *) init_args->cmdline;
 
-            p->tab_fs[0].tag = (char *) init_args->loader_info.dinfo.os_linux.fs_mount_tag;
-            p->tab_fs[0].filename = (char *) init_args->loader_info.dinfo.os_linux.fs_host_directory;
-            p->fs_count = 1;
-        } else {
-            p->files[VM_FILE_BIOS].filename = (char *) init_args->loader_info.dinfo.os_baremetal.binary_path;
+    memset(p->files, 0x00, sizeof(p->files));
+
+    switch (init_args->load_config) {
+    case (IMAGE_TYPE_SEPARATE | OS_TYPE_LINUX):
+        p->files[VM_FILE_BIOS].filename = (char *) init_args->load_config_data.linux_system.bios_path;
+        p->files[VM_FILE_KERNEL].filename = (char *) init_args->load_config_data.linux_system.kernel_path;
+        /* TODO: Add multiple disk support back */
+        p->tab_drive[0].filename = (char *) init_args->load_config_data.linux_system.disk_image_path;
+        p->drive_count = 1;
+
+        break;
+    case (IMAGE_TYPE_SEPARATE | OS_TYPE_BAREMETAL):
+        p->files[VM_FILE_BIOS].filename = (char *) init_args->load_config_data.baremetal_system.binary_path;
+
+        break;
+
+    case (IMAGE_TYPE_COMBINED | OS_TYPE_BAREMETAL):
+    case (IMAGE_TYPE_COMBINED | OS_TYPE_LINUX):
+        {
+            timg_image_footer_t footer;
+            if (TIMG_TRUE == timg_validate(filename, &footer)) {
+                tbyte *compressed_images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+                tuint32_t compressed_image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+
+                tbyte *decompressed_images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+                tuint32_t decompressed_image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+                int i;
+
+                timg_load(filename, footer.payload_count, compressed_images, compressed_image_sizes);
+
+                for (i = 0; compressed_images[i] != 0 && i < TIMG_ADD_MODE_INPUT_LIMIT; ++i) {
+                    decompressed_images[i] = timg_util_decompress_payload(compressed_images[i], compressed_image_sizes[i], &decompressed_image_sizes[i]);
+#if 0
+                    {
+                        char buf[32];
+                        sprintf(buf, "/tmp/%d.bin", i);
+
+                        FILE *f = fopen(buf, "wb");
+
+                        if (f) {
+                            fwrite(decompressed_images[i], 1, decompressed_image_sizes[i], f);
+                            fclose(f);
+                        }
+                    }
+#endif
+                    if (0 == decompressed_images[i]) {
+                        fprintf(stdout, "Error while decompressing image! (Index: %d)\n", i + 1);
+                        exit(-1);
+                    }
+
+                    fprintf(stdout, "%d) Images: %p | Compressed Size: %d | Decompressed Size: %ld\n", i + 1, decompressed_images, compressed_image_sizes[i], decompressed_image_sizes[i]);
+                }
+
+                memset(p->files, 0x00, sizeof(p->files));
+
+                p->files[VM_FILE_BIOS].buf = decompressed_images[0];
+                p->files[VM_FILE_BIOS].len = decompressed_image_sizes[0];
+
+                if (init_args->load_config & OS_TYPE_LINUX) {
+                    p->files[VM_FILE_KERNEL].buf = decompressed_images[1];
+                    p->files[VM_FILE_KERNEL].len = decompressed_image_sizes[1];
+
+                    p->files[VM_FILE_ROOTFS].buf = decompressed_images[2];
+                    p->files[VM_FILE_ROOTFS].len = decompressed_image_sizes[2];
+
+                    p->tab_drive[0].filename = (char *) init_args->load_config_data.linux_system.disk_image_path;
+                    p->drive_count = 1;
+                }
+            }
         }
+        break;
+    }
 
+    if (init_args->load_config & IMAGE_TYPE_SEPARATE) {
         s->file_index = 0;
         config_additional_file_load(s);
-    } else {
-        timg_image_footer_t footer;
-        const char *source = "/usr/local/lib/libtbvm.so";
+    }
 
-        if (TIMG_TRUE == timg_validate(source, &footer)) {
-            tbyte *compressed_images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
-            tuint32_t compressed_image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
-
-            tbyte *decompressed_images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
-            tuint32_t decompressed_image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
-            int i;
-
-            p->cmdline = (char *) init_args->loader_info.dinfo.os_linux.cmdline;
-            p->tab_drive[0].filename = (char *) init_args->loader_info.dinfo.os_linux.disk_image_path;
-            p->drive_count = 1;
-
-            p->tab_fs[0].tag = (char *) init_args->loader_info.dinfo.os_linux.fs_mount_tag;
-            p->tab_fs[0].filename = (char *) init_args->loader_info.dinfo.os_linux.fs_host_directory;
-            p->fs_count = 1;
-
-            timg_load(source, footer.payload_count, compressed_images, compressed_image_sizes);
-
-            for (i = 0; compressed_images[i] != 0 && i < TIMG_ADD_MODE_INPUT_LIMIT; ++i) {
-                decompressed_images[i] = timg_util_decompress_payload(compressed_images[i], compressed_image_sizes[i], &decompressed_image_sizes[i]);
-
-                {
-                    char buf[128];
-                    sprintf(buf, "/home/pundev/Downloads/%d.bin", i);
-
-                    FILE *f = fopen(buf, "wb");
-
-                    if (f) {
-                        fwrite(decompressed_images[i], 1, decompressed_image_sizes[i], f);
-                        fclose(f);
-                    }
-                }
-
-                if (0 == decompressed_images[i]) {
-                    fprintf(stdout, "Error while decompressing image! (Index: %d)\n", i + 1);
-                    exit(-1);
-                }
-
-                fprintf(stdout, "%d) Images: %p | Compressed Size: %d | Decompressed Size: %ld\n", i + 1, decompressed_images, compressed_image_sizes[i], decompressed_image_sizes[i]);
-            }
-
-            memset(p->files, 0x00, sizeof(p->files));
-
-            p->files[VM_FILE_BIOS].buf = decompressed_images[0];
-            p->files[VM_FILE_BIOS].len = decompressed_image_sizes[0];
-
-            p->files[VM_FILE_KERNEL].buf = decompressed_images[1];
-            p->files[VM_FILE_KERNEL].len = decompressed_image_sizes[1];
-        } else {
-            tlogf("%s is not a valid image!", source);
-            exit(-2);
-        }
+    if (init_args->load_config & OS_TYPE_LINUX) {
+        p->tab_fs[0].tag = (char *) init_args->load_config_data.linux_system.fs_mount_tag;
+        p->tab_fs[0].filename = (char *) init_args->load_config_data.linux_system.fs_host_directory;
+        p->fs_count = 1;
     }
 }
 

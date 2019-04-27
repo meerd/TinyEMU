@@ -34,19 +34,14 @@
 #define TBVM_STATE_STOP             0
 #define TBVM_STATE_RUN              0xFFFFFFFF
 
+#define OS_TYPE_LINUX               (1 << 0)
+#define OS_TYPE_BAREMETAL           (1 << 1)
+
+#define IMAGE_TYPE_COMBINED         (1 << 8)
+#define IMAGE_TYPE_SEPARATE         (1 << 9)
+
 typedef void* tbvm_context_t;
-
-typedef enum {
-    OS_TYPE_LINUX,
-    OS_TYPE_BAREMETAL,
-    OS_TYPE_MAX
-} os_type_t;
-
-typedef enum {
-    LOADER_TYPE_DYNAMIC,
-    LOADER_TYPE_STATIC,
-    LOADER_TYPE_MAX
-} loader_type_t;
+typedef unsigned int load_config_t;
 
 typedef union {
     struct {
@@ -56,43 +51,25 @@ typedef union {
 
         const char *fs_mount_tag;
         const char *fs_host_directory;
-
-        const char *cmdline;
-    } os_linux;
+    } linux_system;
 
     struct {
         const char *binary_path;
-    } os_baremetal;
-} dynamic_loader_info_t;
-
-typedef union {
-    struct {
-        void *bios;
-        void *kernel;
-        void *disk_image;
-
-        const char *fs_mount_tag;
-        const char *fs_host_directory;
-
-        const char *cmdline;
-    } os_linux;
+    } baremetal_system;
 
     struct {
-        void *binary;
-    } os_baremetal;
-} static_loader_info_t;
-
-typedef union {
-    static_loader_info_t sinfo;
-    dynamic_loader_info_t dinfo;
-} loader_info_t;
+        const char *combined_image_path;
+    } combined_image;
+} loader_config_data_t;
 
 typedef struct {
-    os_type_t os_type;
     int memory_size;
     int allow_ctrlc;
-    loader_type_t loader_type;
-    loader_info_t loader_info;
+
+    load_config_t load_config;
+    loader_config_data_t load_config_data;
+
+    const char *cmdline;
     const char *config_path;
 } tbvm_init_t;
 

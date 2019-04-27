@@ -252,6 +252,8 @@ static int bf_read_async(BlockDevice *bs,
         (void) retval; /* Suppresses the warning. */
         for(i = 0; i < n; i++) {
             if (!bf->sector_table[sector_num]) {
+                if (0 == bf->f) return -1; /* Invalid configuration */
+
                 fseek(bf->f, sector_num * SECTOR_SIZE, SEEK_SET);
                 retval = fread(buf, 1, SECTOR_SIZE, bf->f);
             } else {
@@ -349,6 +351,32 @@ static BlockDevice *block_device_init(const char *filename,
     return bs;
 }
 
+static BlockDevice *block_device_init_from_memory(uint8_t *fs, int64_t file_size)
+{
+    BlockDevice *bs = tbvm_malloc(sizeof(*bs));
+    BlockDeviceFile *bf = tbvm_malloc(sizeof(*bf));
+    int64_t i = 0;
+
+    fprintf(stdout, "*** Loading ROOTFS from memory...\n");
+
+    bf->mode = BF_MODE_SNAPSHOT;
+    bf->nb_sectors = file_size / SECTOR_SIZE;
+    bf->f = 0;
+
+
+    bf->sector_table = tbvm_malloc(sizeof(bf->sector_table[0]) *
+                               bf->nb_sectors);
+
+    for (; i < bf->nb_sectors; ++i) {
+        bf->sector_table[i] = fs + SECTOR_SIZE;
+    }
+
+    bs->opaque = bf;
+    bs->get_sector_count = bf_get_sector_count;
+    bs->read_async = bf_read_async;
+    bs->write_async = bf_write_async;
+    return bs;
+}
 #define MAX_EXEC_CYCLE 500000
 #define MAX_SLEEP_TIME 10 /* in ms */
 
@@ -419,28 +447,38 @@ void tbvm_get_default_init_arguments(tbvm_init_t *init_args)
         if (wd) {
             int wd_len = strlen(wd);
 
-            init_args->os_type     = OS_TYPE_LINUX;
+            init_args->load_config = IMAGE_TYPE_COMBINED | OS_TYPE_LINUX;
             init_args->memory_size = 16; /* MB */
             init_args->allow_ctrlc = 1; /* Allow CTRL + C */
-            init_args->loader_type = LOADER_TYPE_DYNAMIC;
 
-            init_args->loader_info.dinfo.os_linux.bios_path = tbvm_malloc(wd_len + 64);
-            strcpy((char *) init_args->loader_info.dinfo.os_linux.bios_path, wd);
-            strcat((char *) init_args->loader_info.dinfo.os_linux.bios_path, "/demo/binaries/bbl32.bin");
+#if 0
+            init_args->load_config_data.linux_system.bios_path = tbvm_malloc(wd_len + 64);
+            strcpy((char *) init_args->load_config_data.linux_system.bios_path, wd);
+            strcat((char *) init_args->load_config_data.linux_system.bios_path, "/demo/binaries/bbl32.bin");
 
-            init_args->loader_info.dinfo.os_linux.kernel_path = tbvm_malloc(wd_len + 64);
-            strcpy((char *) init_args->loader_info.dinfo.os_linux.kernel_path, wd);
-            strcat((char *) init_args->loader_info.dinfo.os_linux.kernel_path, "/demo/binaries/kernel-riscv32-custom.bin");
+            init_args->load_config_data.linux_system.kernel_path = tbvm_malloc(wd_len + 64);
+            strcpy((char *) init_args->load_config_data.linux_system.kernel_path, wd);
+            strcat((char *) init_args->load_config_data.linux_system.kernel_path, "/demo/binaries/kernel-riscv32-custom.bin");
 
-            init_args->loader_info.dinfo.os_linux.disk_image_path = tbvm_malloc(wd_len + 64);
-            strcpy((char *) init_args->loader_info.dinfo.os_linux.disk_image_path, wd);
-            strcat((char *) init_args->loader_info.dinfo.os_linux.disk_image_path, "/demo/binaries/rootfs.ext2");
-
-            init_args->loader_info.dinfo.os_linux.cmdline = strdup("console=hvc0 root=/dev/vda rw");
-            init_args->loader_info.dinfo.os_linux.fs_mount_tag = strdup("/dev/root");
-            init_args->loader_info.dinfo.os_linux.fs_host_directory = strdup("/tmp");
+            init_args->load_config_data.linux_system.disk_image_path = tbvm_malloc(wd_len + 64);
+            strcpy((char *) init_args->load_config_data.linux_system.disk_image_path, wd);
+            strcat((char *) init_args->load_config_data.linux_system.disk_image_path, "/demo/binaries/rootfs.ext2");
 
             init_args->config_path = "/home/pundev/git/TinyEMU/demo/profiles/default.prd";
+#else
+
+            init_args->load_config_data.linux_system.disk_image_path = tbvm_malloc(wd_len + 64);
+            strcpy((char *) init_args->load_config_data.linux_system.disk_image_path, wd);
+            strcat((char *) init_args->load_config_data.linux_system.disk_image_path, "/demo/binaries/rootfs.ext2");
+
+            printf("init_args->load_config_data.linux_system.disk_image_path: %s\n", init_args->load_config_data.linux_system.disk_image_path);
+
+            init_args->config_path = "/usr/local/lib/libtbvm.so";
+#endif
+            init_args->cmdline = strdup("console=hvc0 root=/dev/vda rw");
+            init_args->load_config_data.linux_system.fs_mount_tag = strdup("/dev/root");
+            init_args->load_config_data.linux_system.fs_host_directory = strdup("/tmp");
+
             free((void *) wd);
             return;
         }
@@ -462,35 +500,34 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 
 #ifdef DEBUG_BUILD
     fprintf(stdout, "******************************************************\n");
+    fprintf(stdout, "Operating System: %s\n", (OS_TYPE_LINUX & init_args->load_config) ?
+                                               "Linux" : "Baremetal");
+    fprintf(stdout, "Memory Size: %d\n", init_args->memory_size);
+    fprintf(stdout, "Command Line Arguments: %s\n", init_args->cmdline);
 
-    if (LOADER_TYPE_DYNAMIC == init_args->loader_type) {
-        if (OS_TYPE_LINUX == init_args->os_type) {
-            drive_mode = BF_MODE_SNAPSHOT;
+    if (IMAGE_TYPE_COMBINED & init_args->load_config) {
+        fprintf(stdout, "Combined Image Path: %s\n", init_args->config_path);
+    }
 
-            fprintf(stdout, "Operating System: Linux\n");
-            fprintf(stdout, "Memory Size: %d\n", init_args->memory_size);
+    fputs("\n", stdout);
 
-            fprintf(stdout, "Loader Type: Dynamic\n");
-            fprintf(stdout, "Bios Path: %s\n\n", init_args->loader_info.dinfo.os_linux.bios_path);
-
-            fprintf(stdout, "Kernel Path: %s\n", init_args->loader_info.dinfo.os_linux.kernel_path);
-            fprintf(stdout, "Kernel Command Line: %s\n\n", init_args->loader_info.dinfo.os_linux.cmdline);
-
-            fprintf(stdout, "Disk Image Path: %s\n", init_args->loader_info.dinfo.os_linux.disk_image_path);
-            fprintf(stdout, "File Mount Tag: %s\n", init_args->loader_info.dinfo.os_linux.fs_mount_tag);
-            fprintf(stdout, "File System Host Directory: %s\n", init_args->loader_info.dinfo.os_linux.fs_host_directory);
+    if (OS_TYPE_LINUX & init_args->load_config) {
+        if (IMAGE_TYPE_SEPARATE & init_args->load_config) {
+            fprintf(stdout, "Bios Path: %s\n\n", init_args->load_config_data.linux_system.bios_path);
+            fprintf(stdout, "Kernel Path: %s\n", init_args->load_config_data.linux_system.kernel_path);
+            fprintf(stdout, "Disk Image Path: %s\n", init_args->load_config_data.linux_system.disk_image_path);
+            drive_mode = BF_MODE_RO;
         } else {
-            fprintf(stdout, "Baremetal is not supported at the moment.\n");
-            RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
-        }
-    }  else {
-        if (OS_TYPE_LINUX == init_args->os_type) {
-            fprintf(stdout, "Using static image for the bootloader, kernel and rootfs...\n");
             drive_mode = BF_MODE_SNAPSHOT;
-        } else {
-            fprintf(stdout, "Static loader for baremetal is not supported at the moment.\n");
-            RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
         }
+
+        fprintf(stdout, "File Mount Tag: %s\n", init_args->load_config_data.linux_system.fs_mount_tag);
+        fprintf(stdout, "File System Host Directory: %s\n", init_args->load_config_data.linux_system.fs_host_directory);
+    }
+
+    if (OS_TYPE_BAREMETAL & init_args->load_config) {
+        fprintf(stdout, "Baremetal is not supported at the moment.\n");
+        RETURN_ERROR(0, TBVM_INVALID_INIT_ARGS);
     }
 
     fprintf(stdout, "******************************************************\n");
@@ -506,6 +543,7 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
     printf("+0--------------- BUF: %p | LEN: %d\n", p->files[0].buf, p->files[0].len);
     printf("+1--------------- BUF: %p | LEN: %d\n", p->files[1].buf, p->files[1].len);
     printf("+2--------------- BUF: %p | LEN: %d\n", p->files[2].buf, p->files[2].len);
+    printf("+3--------------- BUF: %p | LEN: %d\n", p->files[3].buf, p->files[3].len);
 
 
     /* override some config parameters */
@@ -516,7 +554,16 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 
     /* open the files & devices */
     for(i = 0; i < p->drive_count; i++) {
-        BlockDevice *drive = block_device_init(p->tab_drive[i].filename, drive_mode);
+        BlockDevice *drive = 0;
+
+        if (1) {
+
+        //if (IMAGE_TYPE_SEPARATE & init_args->load_config) {
+            drive = block_device_init(p->tab_drive[i].filename, drive_mode);
+        } else {
+            drive = block_device_init_from_memory(p->files[3].buf, p->files[3].len);
+        }
+
         p->tab_drive[i].block_dev = drive;
     }
 

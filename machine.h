@@ -34,6 +34,7 @@ typedef enum {
     VM_FILE_BIOS,
     VM_FILE_VGA_BIOS,
     VM_FILE_KERNEL,
+    VM_FILE_ROOTFS,
 
     VM_FILE_COUNT,
 } VMFileTypeEnum;
@@ -60,7 +61,7 @@ typedef struct {
 typedef struct VirtMachineClass VirtMachineClass;
 
 typedef struct {
-    char *cfg_filename;
+    char *cfg_filename; /* TODO: Remove */
     const VirtMachineClass *vmc;
     char *machine_name;
     uint64_t ram_size;
