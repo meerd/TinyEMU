@@ -27,8 +27,10 @@
 
 typedef unsigned char tbyte;
 typedef size_t        tsize_t;
-typedef int32_t       tint32_t;
+
+typedef uint8_t       tuint8_t;
 typedef uint32_t      tuint32_t;
+typedef int32_t       tint32_t;
 
 typedef struct {
     tuint32_t package_type_info;
@@ -69,6 +71,7 @@ int  timg_embed(const char *destination_file, const char *source_file);
 void timg_destroy(timg_ctx *ctx);
 
 const char *timg_get_full_path(const char *path);
+tuint8_t* timg_util_decompress_payload(const tuint8_t *input, tuint32_t input_size, unsigned long *output_size);
 
 #define tlogf(msg, ...) fprintf(stdout, msg "\n", ##__VA_ARGS__)
 

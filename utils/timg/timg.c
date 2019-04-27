@@ -15,7 +15,7 @@
 
 /* ##########################----------------------------------------------------------- */
 
-static int load_content(FILE *f, tbyte *buf, tuint32_t size, tuint32_t *read)
+static int load_content(FILE *f, tbyte *buf, tuint32_t size, tint32_t *read)
 {
     int result = TIMG_FALSE;
     int block_size = 1024;
@@ -81,6 +81,7 @@ int timg_init_image(timg_ctx *ctx, const char *target)
 
     if (ctx) {
         tlogf("Initializing file descriptors...");
+        memset(ctx, 0x00, sizeof(*ctx));
 
         ctx->fin  = 0;
         ctx->fout = fopen(target, "w+");
@@ -225,6 +226,14 @@ on_exit:
 
 /* ##########################----------------------------------------------------------- */
 
+tuint8_t* timg_util_decompress_payload(const tuint8_t *input, tuint32_t input_size, unsigned long *output_size)
+{
+    return tinfl_decompress_mem_to_heap(input, input_size, output_size, TINFL_FLAG_PARSE_ZLIB_HEADER);
+}
+
+
+/* ##########################----------------------------------------------------------- */
+
 int timg_finalize(timg_ctx *ctx, tuint32_t type_info, tuint32_t payload_count, tuint32_t image_size)
 {
     int result_code = TIMG_TRUE;
@@ -278,6 +287,7 @@ void timg_destroy(timg_ctx *ctx)
         if (ctx->fout) fclose(ctx->fout);
         free(ctx->inp_buf);
         free(ctx->out_buf);
+        free(ctx->compressor);
     }
 }
 
@@ -285,7 +295,7 @@ void timg_destroy(timg_ctx *ctx)
 
 int timg_validate(const char *source_file, timg_image_footer_t *footer)
 {
-    char buf[4096];
+    tuint8_t buf[4096];
     int result_code = TIMG_FALSE;
     const char *full_path = timg_get_full_path(source_file);
     tuint32_t crc_read = 0, crc_calculated = MZ_CRC32_INIT;
@@ -410,7 +420,7 @@ int timg_load(const char *source_file, tint32_t payload_count, tbyte *images[], 
                 tuint32_t calc_crc = MZ_CRC32_INIT;
                 load_content(fin, images[image_index], image_size, &read_size);
 
-                calc_crc = (mz_uint32) mz_crc32(calc_crc, images[image_index], read_size);
+                calc_crc = (mz_uint32) mz_crc32(calc_crc, images[image_index], (size_t) read_size);
 
                 if (calc_crc != image_crc) {
                     tlogf("CRC mismatch at image index: %d", image_index);

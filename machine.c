@@ -150,6 +150,7 @@ void virt_machine_set_config(VirtMachineParams *p, const tbvm_init_t *init_args)
             /* TODO: Add multiple disk support back */
             p->tab_drive[0].filename = (char *) init_args->loader_info.dinfo.os_linux.disk_image_path;
             p->drive_count = 1;
+
             p->tab_fs[0].tag = (char *) init_args->loader_info.dinfo.os_linux.fs_mount_tag;
             p->tab_fs[0].filename = (char *) init_args->loader_info.dinfo.os_linux.fs_host_directory;
             p->fs_count = 1;
@@ -164,23 +165,57 @@ void virt_machine_set_config(VirtMachineParams *p, const tbvm_init_t *init_args)
         const char *source = "/usr/local/lib/libtbvm.so";
 
         if (TIMG_TRUE == timg_validate(source, &footer)) {
-            tbyte *images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
-            tuint32_t image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+            tbyte *compressed_images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+            tuint32_t compressed_image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
 
-            timg_load(source, footer.payload_count, images, image_sizes);
+            tbyte *decompressed_images[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+            tuint32_t decompressed_image_sizes[TIMG_ADD_MODE_INPUT_LIMIT] = { 0 };
+            int i;
 
-            {
-                int i;
+            p->cmdline = (char *) init_args->loader_info.dinfo.os_linux.cmdline;
+            p->tab_drive[0].filename = (char *) init_args->loader_info.dinfo.os_linux.disk_image_path;
+            p->drive_count = 1;
 
-                for (i = 0; i < TIMG_ADD_MODE_INPUT_LIMIT; ++i) {
-                    printf("images: %p | sizes: %d\n", images[i], image_sizes[i]);
+            p->tab_fs[0].tag = (char *) init_args->loader_info.dinfo.os_linux.fs_mount_tag;
+            p->tab_fs[0].filename = (char *) init_args->loader_info.dinfo.os_linux.fs_host_directory;
+            p->fs_count = 1;
+
+            timg_load(source, footer.payload_count, compressed_images, compressed_image_sizes);
+
+            for (i = 0; compressed_images[i] != 0 && i < TIMG_ADD_MODE_INPUT_LIMIT; ++i) {
+                decompressed_images[i] = timg_util_decompress_payload(compressed_images[i], compressed_image_sizes[i], &decompressed_image_sizes[i]);
+
+                {
+                    char buf[128];
+                    sprintf(buf, "/home/pundev/Downloads/%d.bin", i);
+
+                    FILE *f = fopen(buf, "wb");
+
+                    if (f) {
+                        fwrite(decompressed_images[i], 1, decompressed_image_sizes[i], f);
+                        fclose(f);
+                    }
                 }
+
+                if (0 == decompressed_images[i]) {
+                    fprintf(stdout, "Error while decompressing image! (Index: %d)\n", i + 1);
+                    exit(-1);
+                }
+
+                fprintf(stdout, "%d) Images: %p | Compressed Size: %d | Decompressed Size: %ld\n", i + 1, decompressed_images, compressed_image_sizes[i], decompressed_image_sizes[i]);
             }
+
+            memset(p->files, 0x00, sizeof(p->files));
+
+            p->files[VM_FILE_BIOS].buf = decompressed_images[0];
+            p->files[VM_FILE_BIOS].len = decompressed_image_sizes[0];
+
+            p->files[VM_FILE_KERNEL].buf = decompressed_images[1];
+            p->files[VM_FILE_KERNEL].len = decompressed_image_sizes[1];
         } else {
             tlogf("%s is not a valid image!", source);
+            exit(-2);
         }
-
-        exit(0);
     }
 }
 
