@@ -216,6 +216,7 @@ typedef enum {
 
 typedef struct BlockDeviceFile {
     FILE *f;
+    uint8_t *mem_f;
     int64_t nb_sectors;
     BlockDeviceModeEnum mode;
     uint8_t **sector_table;
@@ -245,20 +246,26 @@ static int bf_read_async(BlockDevice *bs,
 #endif
     int retval; /* Suppresses the warning. */
 
-    if (!bf->f)
+    if (!bf->mem_f && !bf->f)
         return -1;
     if (bf->mode == BF_MODE_SNAPSHOT) {
         int i;
         (void) retval; /* Suppresses the warning. */
         for(i = 0; i < n; i++) {
             if (!bf->sector_table[sector_num]) {
-                if (0 == bf->f) return -1; /* Invalid configuration */
+                if (0 != bf->mem_f) {
+                    bf->sector_table[sector_num] = bf->mem_f + sector_num * SECTOR_SIZE;
+                } else {
+                    if (0 == bf->f) return -1; /* Invalid configuration */
 
-                fseek(bf->f, sector_num * SECTOR_SIZE, SEEK_SET);
-                retval = fread(buf, 1, SECTOR_SIZE, bf->f);
+                    fseek(bf->f, sector_num * SECTOR_SIZE, SEEK_SET);
+                    retval = fread(buf, 1, SECTOR_SIZE, bf->f);
+                }
             } else {
                 memcpy(buf, bf->sector_table[sector_num], SECTOR_SIZE);
             }
+
+            printf("*****************************************SECTOR READ: %d\n", sector_num);
             sector_num++;
             buf += SECTOR_SIZE;
         }
@@ -293,7 +300,11 @@ static int bf_write_async(BlockDevice *bs,
                 return -1;
             for(i = 0; i < n; i++) {
                 if (!bf->sector_table[sector_num]) {
-                    bf->sector_table[sector_num] = malloc(SECTOR_SIZE);
+                    if (0 != bf->mem_f)
+                        bf->sector_table[sector_num] = bf->mem_f + sector_num * SECTOR_SIZE;
+                    else
+                        bf->sector_table[sector_num] = malloc(SECTOR_SIZE);
+
                 }
                 memcpy(bf->sector_table[sector_num], buf, SECTOR_SIZE);
                 sector_num++;
@@ -338,6 +349,7 @@ static BlockDevice *block_device_init(const char *filename,
     bf->mode = mode;
     bf->nb_sectors = file_size / 512;
     bf->f = f;
+    bf->mem_f = 0;
 
     if (mode == BF_MODE_SNAPSHOT) {
         bf->sector_table = tbvm_malloc(sizeof(bf->sector_table[0]) *
@@ -362,13 +374,13 @@ static BlockDevice *block_device_init_from_memory(uint8_t *fs, int64_t file_size
     bf->mode = BF_MODE_SNAPSHOT;
     bf->nb_sectors = file_size / SECTOR_SIZE;
     bf->f = 0;
-
+    bf->mem_f = fs;
 
     bf->sector_table = tbvm_malloc(sizeof(bf->sector_table[0]) *
                                bf->nb_sectors);
 
     for (; i < bf->nb_sectors; ++i) {
-        bf->sector_table[i] = fs + SECTOR_SIZE;
+        bf->sector_table[i] = bf->mem_f + i * SECTOR_SIZE;
     }
 
     bs->opaque = bf;
@@ -532,22 +544,10 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
 
     fprintf(stdout, "******************************************************\n");
 #endif
-
-    printf("0--------------- BUF: %p | LEN: %d\n", p->files[0].buf, p->files[0].len);
-    printf("1--------------- BUF: %p | LEN: %d\n", p->files[1].buf, p->files[1].len);
-    printf("2--------------- BUF: %p | LEN: %d\n", p->files[2].buf, p->files[2].len);
-
     virt_machine_set_defaults(p);
     virt_machine_set_config(p, init_args);
 
-    printf("+0--------------- BUF: %p | LEN: %d\n", p->files[0].buf, p->files[0].len);
-    printf("+1--------------- BUF: %p | LEN: %d\n", p->files[1].buf, p->files[1].len);
-    printf("+2--------------- BUF: %p | LEN: %d\n", p->files[2].buf, p->files[2].len);
-    printf("+3--------------- BUF: %p | LEN: %d\n", p->files[3].buf, p->files[3].len);
-
-
     /* override some config parameters */
-
     if (init_args->memory_size > 0) {
         p->ram_size = (uint64_t)init_args->memory_size << 20;
     }
@@ -556,12 +556,12 @@ tbvm_context_t tbvm_init(const tbvm_init_t *init_args, int *err)
     for(i = 0; i < p->drive_count; i++) {
         BlockDevice *drive = 0;
 
-        if (1) {
-
-        //if (IMAGE_TYPE_SEPARATE & init_args->load_config) {
+        if (IMAGE_TYPE_SEPARATE & init_args->load_config) {
             drive = block_device_init(p->tab_drive[i].filename, drive_mode);
         } else {
             drive = block_device_init_from_memory(p->files[3].buf, p->files[3].len);
+			/* TODO: FIX THIS! */            
+			p->files[3].buf = 0;
         }
 
         p->tab_drive[i].block_dev = drive;
