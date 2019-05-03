@@ -265,7 +265,6 @@ static int bf_read_async(BlockDevice *bs,
                 memcpy(buf, bf->sector_table[sector_num], SECTOR_SIZE);
             }
 
-            printf("*****************************************SECTOR READ: %d\n", sector_num);
             sector_num++;
             buf += SECTOR_SIZE;
         }
@@ -460,7 +459,7 @@ void tbvm_get_default_init_arguments(tbvm_init_t *init_args)
             int wd_len = strlen(wd);
 
             init_args->load_config = IMAGE_TYPE_COMBINED | OS_TYPE_LINUX;
-            init_args->memory_size = 16; /* MB */
+            init_args->memory_size = 128; /* MB */
             init_args->allow_ctrlc = 1; /* Allow CTRL + C */
 
 #if 0

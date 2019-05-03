@@ -66,7 +66,8 @@ typedef struct RISCVMachine {
 #define VIRTIO_IRQ              1
 #define PLIC_BASE_ADDR          0x40100000
 #define PLIC_SIZE               0x00400000
-#define FRAMEBUFFER_BASE_ADDR   0x41000000
+
+#define TBVM_VIRTUAL_DPR_START  0x41000000
 
 #define RTC_FREQ 10000000
 #define RTC_FREQ_DIV 16 /* arbitrary, relative to CPU freq to have a
@@ -714,6 +715,8 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     ram_flags = 0;
     cpu_register_ram(s->mem_map, RAM_BASE_ADDR, p->ram_size, ram_flags);
     cpu_register_ram(s->mem_map, 0x00000000, LOW_RAM_SIZE, 0);
+    cpu_register_ram(s->mem_map, TBVM_VIRTUAL_DPR_START, 1920 * 1080 * 4, 0);
+
     s->rtc_real_time = p->rtc_real_time;
     if (p->rtc_real_time) {
         s->rtc_start_time = rtc_get_real_time(s);
@@ -820,6 +823,23 @@ static void riscv_machine_interp(VirtMachine *s1, int max_exec_cycle)
 {
     RISCVMachine *s = (RISCVMachine *)s1;
     riscv_cpu_interp(s->cpu_state, max_exec_cycle);
+
+    {
+        char mm[32];
+        long calc_val = 0;
+
+        uint32_t *ram_ptr = get_ram_ptr(s, TBVM_VIRTUAL_DPR_START, TRUE);
+
+        if (0xDEADC0DE == ram_ptr[0]) {
+            ram_ptr[0] = 0;
+
+            for (uint32_t i = 1; i < (1920 * 1080); ++i) {
+                calc_val += ram_ptr[i];
+            }
+
+            printf("Received from host: %ld\n", calc_val);
+        }
+    }
 }
 
 const VirtMachineClass riscv_machine_class = {
